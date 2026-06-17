@@ -15,7 +15,17 @@ namespace Fast {
 struct PerFrameCB {
     uint32_t noise_frame;
     float noise_scale;
-    uint32_t padding[2]; // constant buffers must be multiples of 16 bytes in size
+    // SOH [Enhancement] Toon lighting. Padding keeps each float3 on a 16-byte boundary so the
+    // layout matches the HLSL cbuffer packing rules. Total size 64 bytes (multiple of 16).
+    uint32_t _toon_pad0[2];
+    float toon_light_dir[3];
+    float toon_ramp_center;
+    float toon_light_color[3];
+    float toon_ramp_softness;
+    float toon_ambient[3];
+    float toon_highlight_intensity;
+    float toon_shadow_intensity;
+    float _toon_pad1[3];
 };
 
 struct PerDrawCB {
@@ -65,6 +75,7 @@ struct ShaderProgramD3D11 {
     uint8_t numInputs;
     uint8_t numFloats;
     bool usedTextures[SHADER_MAX_TEXTURES];
+    bool opt_toon = false; // SOH [Enhancement] toon lighting variant
 };
 
 class GfxWindowBackendDXGI;

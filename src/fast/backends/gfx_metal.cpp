@@ -37,6 +37,7 @@
 #include "libultraship/libultra/abi.h"
 #include "ship/Context.h"
 #include "ship/config/ConsoleVariable.h"
+#include "fast/toon_shading.h"
 
 #include "fast/Fast3dWindow.h"
 
@@ -84,7 +85,9 @@ bool GfxRenderingAPIMetal::MetalInit(SDL_Renderer* renderer) {
     mReadbackQueue = mDevice->newCommandQueue();
 
     for (size_t i = 0; i < kMaxVertexBufferPoolSize; i++) {
-        MTL::Buffer* new_buffer = mDevice->newBuffer(256 * 32 * 3 * sizeof(float) * 50, MTL::ResourceStorageModeShared);
+        // SOH [Enhancement] 40 floats/vertex (was 32) to match the CPU mBufVbo allocation, which gained
+        // headroom for the toon-lighting normal attribute. Must stay in lockstep with interpreter.cpp.
+        MTL::Buffer* new_buffer = mDevice->newBuffer(256 * 40 * 3 * sizeof(float) * 50, MTL::ResourceStorageModeShared);
         mVertexBufferPool[i] = new_buffer;
     }
 
@@ -270,6 +273,7 @@ struct ShaderProgram* GfxRenderingAPIMetal::CreateAndLoadNewShader(uint64_t shad
     prg->usedTextures[5] = cc_features.used_blend[1];
     prg->numInputs = cc_features.numInputs;
     prg->numFloats = numFloats;
+    prg->opt_toon = cc_features.opt_toon; // SOH [Enhancement] toon lighting
 
     // Prepoluate pipeline state cache with program and available msaa levels
     for (int i = 0; i < ARRAY_COUNT(mMsaaNumQualityLevels); i++) {
@@ -532,7 +536,23 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
         }
     }
 
-    if (textures_changed || mPrimDepthDirty) {
+    // SOH [Enhancement] Toon lighting: feed the per-object dominant light + ramp shape (from CVars).
+    if (mShaderProgram->opt_toon) {
+        auto cvars = Ship::Context::GetRawInstance()->GetConsoleVariables();
+        for (int j = 0; j < 3; j++) {
+            mDrawUniforms.toonLightDir[j] = mToonLightDir[j];
+            mDrawUniforms.toonLightColor[j] = mToonLightColor[j];
+            mDrawUniforms.toonAmbient[j] = mToonAmbient[j];
+        }
+        mDrawUniforms.toonRampCenter = cvars->GetFloat(CVAR_TOON_SHADING_RAMP_CENTER, TOON_SHADING_DEFAULT_RAMP_CENTER);
+        mDrawUniforms.toonRampSoftness =
+            cvars->GetFloat(CVAR_TOON_SHADING_RAMP_SOFTNESS, TOON_SHADING_DEFAULT_RAMP_SOFTNESS);
+        mDrawUniforms.toonHighlightIntensity =
+            cvars->GetFloat(CVAR_TOON_SHADING_HIGHLIGHT, TOON_SHADING_DEFAULT_HIGHLIGHT);
+        mDrawUniforms.toonShadowIntensity = cvars->GetFloat(CVAR_TOON_SHADING_SHADOW, TOON_SHADING_DEFAULT_SHADOW);
+    }
+
+    if (textures_changed || mPrimDepthDirty || mShaderProgram->opt_toon) {
         mDrawUniforms.prim_depth = mCurrentPrimDepth;
         current_framebuffer.mCommandEncoder->setFragmentBytes(&mDrawUniforms, sizeof(DrawUniforms), 1);
         mPrimDepthDirty = false;

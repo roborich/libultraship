@@ -65,6 +65,7 @@ struct ShaderProgramMetal {
     uint8_t numFloats;
     bool usedTextures[SHADER_MAX_TEXTURES];
     bool markedForDeletion = false;
+    bool opt_toon = false; // SOH [Enhancement] toon lighting variant
 
     // hashed by msaa_level
     MTL::RenderPipelineState* pipeline_state_variants[9];
@@ -119,6 +120,15 @@ struct FrameUniforms {
 
 struct DrawUniforms {
     simd::int1 textureFiltering[SHADER_MAX_TEXTURES];
+    // SOH [Enhancement] Toon lighting — float[3] (12 bytes, 4-aligned) matches the .metal
+    // packed_float3 fields. Kept before prim_depth so the layout matches every shader variant.
+    simd::float1 toonLightDir[3];
+    simd::float1 toonLightColor[3];
+    simd::float1 toonAmbient[3];
+    simd::float1 toonRampCenter;
+    simd::float1 toonRampSoftness;
+    simd::float1 toonHighlightIntensity;
+    simd::float1 toonShadowIntensity;
     simd::float1 prim_depth;
 };
 

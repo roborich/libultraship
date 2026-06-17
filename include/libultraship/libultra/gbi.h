@@ -192,6 +192,7 @@
 #define G_DL_INDEX 0x3d
 #define G_READFB 0x3e
 #define G_SETINTENSITY 0x40
+#define G_SETTOON 0x41 // SOH [Enhancement] toon lighting per-draw marker
 #define G_PUSH_SHADER 0x43
 #define G_POP_SHADER 0x44
 #define G_SETTILESIZE_INTERP 0x45
@@ -2828,6 +2829,18 @@ typedef union Gfx {
 
 #define gsSPGrayscale(state) \
     { (_SHIFTL(G_SETGRAYSCALE, 24, 8)), (state) }
+
+// SOH [Enhancement] Toon lighting per-draw marker (mirrors gSPGrayscale).
+#define gSPToon(pkt, state)                       \
+    {                                             \
+        Gfx* _g = (Gfx*)(pkt);                    \
+                                                  \
+        _g->words.w0 = _SHIFTL(G_SETTOON, 24, 8); \
+        _g->words.w1 = state;                     \
+    }
+
+#define gsSPToon(state) \
+    { (_SHIFTL(G_SETTOON, 24, 8)), (state) }
 
 #define gsSPPushShader(shader)                                  \
     { (_SHIFTL(G_PUSH_SHADER, 24, 8)), (uintptr_t)(shader) }, { \

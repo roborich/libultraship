@@ -113,7 +113,8 @@ constexpr size_t MAX_TRI_BUFFER = 256;
 Interpreter::Interpreter() {
     mRsp = new RSP();
     mRdp = new RDP();
-    mBufVbo = new float[MAX_TRI_BUFFER * (32 * 3)];
+    // SOH [Enhancement] 40 (was 32) floats/vertex max to leave headroom for the toon normal attribute.
+    mBufVbo = new float[MAX_TRI_BUFFER * (40 * 3)];
 }
 
 Interpreter::~Interpreter() {
@@ -134,6 +135,9 @@ static constexpr float N64_PRIM_DEPTH_MAX = 32767.0f;
 void Interpreter::Flush() {
     if (mBufVboLen > 0) {
         mRapi->SetCurrentPrimDepth((float)mRdp->prim_depth / N64_PRIM_DEPTH_MAX);
+        // SOH [Enhancement] Push the dominant toon light for this batch. The backend only consumes it
+        // when the bound shader is a toon variant, so it is a no-op for ordinary draws.
+        mRapi->SetToonLighting(mRsp->toon_light_dir, mRsp->toon_light_color, mRsp->toon_ambient);
         mRapi->DrawTriangles(mBufVbo, mBufVboLen, mBufVboNumTris);
         mBufVboLen = 0;
         mBufVboNumTris = 0;
@@ -1383,6 +1387,116 @@ void Interpreter::CalculateNormalDir(const F3DLight_t* light, float coeffs[3]) {
     Interpreter::NormalizeVector(coeffs);
 }
 
+// SOH [Enhancement] Compute the single effective light for the current object for toon shading.
+//
+// OoT binds actor lights (incl. point lights / fairies) as DIRECTIONAL lights whose color is already
+// distance-attenuated by the game (Lights_BindPoint: col *= 1-(dist/radius)^2) and whose direction
+// points toward the source. A naive "pick the brightest light" hard-switches between the steady
+// environment light and an orbiting point light every frame, which makes the lit side spin and the
+// shading flicker. Instead we take the LUMINANCE-WEIGHTED AVERAGE direction + color: it is still a
+// single direction (one crisp ramp, toon look preserved), the steady environment light anchors it,
+// and a moving point light only nudges it — or smoothly dominates it when it is genuinely the
+// brightest light (e.g. a torch in a dark room). Must run after current_lights_coeffs are computed.
+void Interpreter::SelectToonLight() {
+    int amb_idx = mRsp->current_num_lights - 1;
+    if (amb_idx < 0) {
+        amb_idx = 0;
+    }
+    mRsp->toon_ambient[0] = mRsp->current_lights[amb_idx].l.col[0] / 255.0f;
+    mRsp->toon_ambient[1] = mRsp->current_lights[amb_idx].l.col[1] / 255.0f;
+    mRsp->toon_ambient[2] = mRsp->current_lights[amb_idx].l.col[2] / 255.0f;
+
+    // Object origin in view space (only used by the positional fallback path, which OoT actors
+    // don't normally hit since point lights are bound as directional).
+    float(*mv)[4] = mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1];
+    float obj_pos[3] = { mv[3][0], mv[3][1], mv[3][2] };
+
+    // First pass: gather each light's object-space direction, color and luminance weight.
+    int n = 0;
+    float dirs[MAX_LIGHTS][3];
+    float cols[MAX_LIGHTS][3];
+    float weights[MAX_LIGHTS];
+    float total_weight = 0.0f;
+
+    for (int i = 0; i < mRsp->current_num_lights - 1 && n < MAX_LIGHTS; i++) {
+        const F3DLight* light = &mRsp->current_lights[i];
+        float col[3] = { light->l.col[0] / 255.0f, light->l.col[1] / 255.0f, light->l.col[2] / 255.0f };
+        float lum = (col[0] + col[1] + col[2]) / 3.0f;
+        if (lum <= 0.001f) {
+            continue; // attenuated to nothing (out of range)
+        }
+
+        float dir[3];
+        float weight = lum;
+        if ((mRsp->geometry_mode & G_LIGHTING_POSITIONAL) && (light->p.unk3 != 0)) {
+            float to_light[3] = { light->p.pos[0] - obj_pos[0], light->p.pos[1] - obj_pos[1],
+                                  light->p.pos[2] - obj_pos[2] };
+            float dist = sqrtf(to_light[0] * to_light[0] + to_light[1] * to_light[1] + to_light[2] * to_light[2]) +
+                         1e-4f;
+            float distf = floorf(dist);
+            float attenuation =
+                (distf * light->p.unk7 * 2.0f + distf * distf * light->p.unkE / 8.0f) / (float)0xFFFF + 1.0f;
+            weight = lum / attenuation;
+            float dir_world[3] = { to_light[0] / dist, to_light[1] / dist, to_light[2] / dist };
+            TransposedMatrixMul(dir, dir_world, mv);
+            NormalizeVector(dir);
+        } else {
+            dir[0] = mRsp->current_lights_coeffs[i][0];
+            dir[1] = mRsp->current_lights_coeffs[i][1];
+            dir[2] = mRsp->current_lights_coeffs[i][2];
+        }
+
+        dirs[n][0] = dir[0];
+        dirs[n][1] = dir[1];
+        dirs[n][2] = dir[2];
+        cols[n][0] = col[0];
+        cols[n][1] = col[1];
+        cols[n][2] = col[2];
+        weights[n] = weight;
+        total_weight += weight;
+        n++;
+    }
+
+    // Second pass: capped weighted average. Capping each light at a fraction of the total keeps any
+    // single very-close, very-bright light (e.g. a fairy passing right in front of the object) from
+    // blowing out the whole shade — the steady environment light and other lights keep their say.
+    float accum_dir[3] = { 0.0f, 0.0f, 0.0f };
+    float accum_col[3] = { 0.0f, 0.0f, 0.0f };
+    float capped_total = 0.0f;
+    const float max_share = 0.4f;
+    float cap = max_share * total_weight;
+    for (int k = 0; k < n; k++) {
+        float w = weights[k] < cap ? weights[k] : cap;
+        accum_dir[0] += dirs[k][0] * w;
+        accum_dir[1] += dirs[k][1] * w;
+        accum_dir[2] += dirs[k][2] * w;
+        accum_col[0] += cols[k][0] * w;
+        accum_col[1] += cols[k][1] * w;
+        accum_col[2] += cols[k][2] * w;
+        capped_total += w;
+    }
+    total_weight = capped_total;
+
+    float dir_len =
+        sqrtf(accum_dir[0] * accum_dir[0] + accum_dir[1] * accum_dir[1] + accum_dir[2] * accum_dir[2]);
+    if (total_weight > 1e-4f && dir_len > 1e-4f) {
+        mRsp->toon_light_dir[0] = accum_dir[0] / dir_len;
+        mRsp->toon_light_dir[1] = accum_dir[1] / dir_len;
+        mRsp->toon_light_dir[2] = accum_dir[2] / dir_len;
+        mRsp->toon_light_color[0] = accum_col[0] / total_weight;
+        mRsp->toon_light_color[1] = accum_col[1] / total_weight;
+        mRsp->toon_light_color[2] = accum_col[2] / total_weight;
+    } else {
+        // No usable light: straight-on white so the object is at least evenly lit.
+        mRsp->toon_light_dir[0] = 0.0f;
+        mRsp->toon_light_dir[1] = 0.0f;
+        mRsp->toon_light_dir[2] = 1.0f;
+        mRsp->toon_light_color[0] = 1.0f;
+        mRsp->toon_light_color[1] = 1.0f;
+        mRsp->toon_light_color[2] = 1.0f;
+    }
+}
+
 void Interpreter::GfxSpMatrix(uint8_t parameters, const int32_t* addr) {
     float matrix[4][4];
 
@@ -1519,6 +1633,9 @@ void Interpreter::GfxSpVertex(size_t n_vertices, size_t dest_index, const F3DVtx
                 static const Light_t lookat_y = {{0, 0, 0}, 0, {0, 0, 0}, 0, {0, 127, 0}, 0};*/
                 CalculateNormalDir(&mRsp->lookat[0], mRsp->current_lookat_coeffs[0]);
                 CalculateNormalDir(&mRsp->lookat[1], mRsp->current_lookat_coeffs[1]);
+                if (mRdp->toon) { // SOH [Enhancement] toon lighting: cache the dominant light
+                    SelectToonLight();
+                }
                 mRsp->lights_changed = false;
             }
 
@@ -1581,6 +1698,18 @@ void Interpreter::GfxSpVertex(size_t n_vertices, size_t dest_index, const F3DVtx
             d->color.r = r > 255 ? 255 : r;
             d->color.g = g > 255 ? 255 : g;
             d->color.b = b > 255 ? 255 : b;
+
+            // SOH [Enhancement] Toon lighting: forward the object-space normal to the fragment shader
+            // and neutralize the vertex shade so the combiner emits pure albedo. The fragment shader
+            // then re-lights it with the single dominant light through the toon ramp.
+            if (mRdp->toon) {
+                d->nx = vn->n[0] / 127.0f;
+                d->ny = vn->n[1] / 127.0f;
+                d->nz = vn->n[2] / 127.0f;
+                d->color.r = 255;
+                d->color.g = 255;
+                d->color.b = 255;
+            }
 
             if (mRsp->geometry_mode & G_TEXTURE_GEN) {
                 float dotx = 0, doty = 0;
@@ -1779,6 +1908,8 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
     bool invisible =
         (mRdp->other_mode_l & (3 << 24)) == (G_BL_0 << 24) && (mRdp->other_mode_l & (3 << 20)) == (G_BL_CLR_MEM << 20);
     bool use_grayscale = mRdp->grayscale;
+    // SOH [Enhancement] Toon lighting only applies to lit geometry (where vertex normals exist).
+    bool use_toon = mRdp->toon && (mRsp->geometry_mode & G_LIGHTING);
     bool use_prim_depth = (mRdp->other_mode_l & G_ZS_PRIM) != 0;
 
     if (texture_edge) {
@@ -1812,6 +1943,9 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
     }
     if (use_grayscale) {
         cc_options |= SHADER_OPT(GRAYSCALE);
+    }
+    if (use_toon) {
+        cc_options |= SHADER_OPT(TOON);
     }
     if (use_prim_depth) {
         cc_options |= SHADER_OPT(PRIM_DEPTH);
@@ -2063,6 +2197,14 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
             mBufVbo[mBufVboLen++] = mRdp->grayscale_color.g / 255.0f;
             mBufVbo[mBufVboLen++] = mRdp->grayscale_color.b / 255.0f;
             mBufVbo[mBufVboLen++] = mRdp->grayscale_color.a / 255.0f; // lerp interpolation factor (not alpha)
+        }
+
+        // SOH [Enhancement] Toon lighting: object-space normal (aNormal). The dominant light/ambient
+        // are sent as uniforms (per draw), not per-vertex, to stay within the vertex-attribute limit.
+        if (use_toon) {
+            mBufVbo[mBufVboLen++] = v_arr[i]->nx;
+            mBufVbo[mBufVboLen++] = v_arr[i]->ny;
+            mBufVbo[mBufVboLen++] = v_arr[i]->nz;
         }
 
         for (int j = 0; j < numInputs; j++) {
@@ -4116,6 +4258,15 @@ bool gfx_set_grayscale_handler_custom(F3DGfx** cmd0) {
     return false;
 }
 
+// SOH [Enhancement] Toon lighting per-draw marker (mirrors grayscale).
+bool gfx_set_toon_handler_custom(F3DGfx** cmd0) {
+    Interpreter* gfx = mInstance.lock().get();
+    F3DGfx* cmd = *cmd0;
+
+    gfx->mRdp->toon = cmd->words.w1;
+    return false;
+}
+
 bool gfx_load_block_handler_rdp(F3DGfx** cmd0) {
     Interpreter* gfx = mInstance.lock().get();
     F3DGfx* cmd = *cmd0;
@@ -4568,6 +4719,7 @@ static constexpr UcodeHandler otrHandlers = {
     { OTR_G_REGBLENDEDTEX,
       { "G_REGBLENDEDTEX", gfx_register_blended_texture_handler_custom } },         // G_REGBLENDEDTEX (0x3f)
     { OTR_G_SETINTENSITY, { "G_SETINTENSITY", gfx_set_intensity_handler_custom } }, // G_SETINTENSITY (0x40)
+    { OTR_G_SETTOON, { "G_SETTOON", gfx_set_toon_handler_custom } },                // G_SETTOON (0x41)
     { OTR_G_MOVEMEM_HASH, { "OTR_G_MOVEMEM_HASH", gfx_movemem_handler_otr } },      // OTR_G_MOVEMEM_HASH
     { OTR_G_PUSH_SHADER, { "G_PUSH_SHADER", gfx_push_shader } },
     { OTR_G_POP_SHADER, { "G_POP_SHADER", gfx_pop_shader } },
@@ -5258,6 +5410,7 @@ void gfx_cc_get_features(uint64_t shader_id0, uint64_t shader_id1, struct CCFeat
     cc_features->opt_alpha_threshold = (shader_id1 & SHADER_OPT(ALPHA_THRESHOLD)) != 0;
     cc_features->opt_invisible = (shader_id1 & SHADER_OPT(INVISIBLE)) != 0;
     cc_features->opt_grayscale = (shader_id1 & SHADER_OPT(GRAYSCALE)) != 0;
+    cc_features->opt_toon = (shader_id1 & SHADER_OPT(TOON)) != 0; // SOH [Enhancement] toon lighting
     cc_features->opt_prim_depth = (shader_id1 & SHADER_OPT(PRIM_DEPTH)) != 0;
 
     cc_features->clamp[0][0] = shader_id1 & SHADER_OPT(TEXEL0_CLAMP_S);

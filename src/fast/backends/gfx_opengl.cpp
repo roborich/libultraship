@@ -25,6 +25,7 @@
 #include "ship/Context.h"
 #include "ship/resource/factory/ShaderFactory.h"
 #include "fast/interpreter.h"
+#include "fast/toon_shading.h"
 #include "ship/config/ConsoleVariable.h"
 
 namespace Fast {
@@ -73,6 +74,22 @@ void GfxRenderingAPIOGL::SetPerDrawUniforms() {
 
         GLint height[2] = { textures[mCurrentTextureIds[0]].height, textures[mCurrentTextureIds[1]].height };
         glUniform1iv(mCurrentShaderProgram->texture_height_location, 2, height);
+    }
+
+    // SOH [Enhancement] Toon lighting: per-object dominant light + ramp shape (ramp from CVars).
+    if (mCurrentShaderProgram->opt_toon) {
+        auto cvars = Ship::Context::GetRawInstance()->GetConsoleVariables();
+        glUniform3fv(mCurrentShaderProgram->toon_light_dir_location, 1, mToonLightDir);
+        glUniform3fv(mCurrentShaderProgram->toon_light_color_location, 1, mToonLightColor);
+        glUniform3fv(mCurrentShaderProgram->toon_ambient_location, 1, mToonAmbient);
+        glUniform1f(mCurrentShaderProgram->toon_ramp_center_location,
+                    cvars->GetFloat(CVAR_TOON_SHADING_RAMP_CENTER, TOON_SHADING_DEFAULT_RAMP_CENTER));
+        glUniform1f(mCurrentShaderProgram->toon_ramp_softness_location,
+                    cvars->GetFloat(CVAR_TOON_SHADING_RAMP_SOFTNESS, TOON_SHADING_DEFAULT_RAMP_SOFTNESS));
+        glUniform1f(mCurrentShaderProgram->toon_highlight_intensity_location,
+                    cvars->GetFloat(CVAR_TOON_SHADING_HIGHLIGHT, TOON_SHADING_DEFAULT_HIGHLIGHT));
+        glUniform1f(mCurrentShaderProgram->toon_shadow_intensity_location,
+                    cvars->GetFloat(CVAR_TOON_SHADING_SHADOW, TOON_SHADING_DEFAULT_SHADOW));
     }
 }
 
@@ -249,6 +266,7 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
         { "o_alpha_threshold", cc_features.opt_alpha_threshold },
         { "o_invisible", cc_features.opt_invisible },
         { "o_grayscale", cc_features.opt_grayscale },
+        { "o_toon", cc_features.opt_toon },
         { "o_prim_depth", cc_features.opt_prim_depth },
         { "o_textures", M_ARRAY(cc_features.usedTextures, bool, 2) },
         { "o_masks", M_ARRAY(cc_features.used_masks, bool, 2) },
@@ -348,6 +366,7 @@ static std::string BuildVsShader(const CCFeatures& cc_features) {
                                      { "o_clamp", M_ARRAY(cc_features.clamp, bool, 2, 2) },
                                      { "o_fog", cc_features.opt_fog },
                                      { "o_grayscale", cc_features.opt_grayscale },
+                                     { "o_toon", cc_features.opt_toon },
                                      { "o_alpha", cc_features.opt_alpha },
                                      { "o_inputs", cc_features.numInputs },
                                      { "update_floats", (InvokeFunc)UpdateFloats },
@@ -483,6 +502,13 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
         ++cnt;
     }
 
+    // SOH [Enhancement] Toon lighting object-space normal attribute (order must match the vbo packing).
+    if (cc_features.opt_toon) {
+        prg->attribLocations[cnt] = glGetAttribLocation(shader_program, "aNormal");
+        prg->attribSizes[cnt] = 3;
+        ++cnt;
+    }
+
     for (int i = 0; i < cc_features.numInputs; i++) {
         char name[16];
         snprintf(name, sizeof(name), "aInput%d", i + 1);
@@ -508,6 +534,16 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     prg->texture_width_location = glGetUniformLocation(shader_program, "texture_width");
     prg->texture_height_location = glGetUniformLocation(shader_program, "texture_height");
     prg->texture_filtering_location = glGetUniformLocation(shader_program, "texture_filtering");
+
+    // SOH [Enhancement] Toon lighting uniforms
+    prg->opt_toon = cc_features.opt_toon;
+    prg->toon_light_dir_location = glGetUniformLocation(shader_program, "toon_light_dir");
+    prg->toon_light_color_location = glGetUniformLocation(shader_program, "toon_light_color");
+    prg->toon_ambient_location = glGetUniformLocation(shader_program, "toon_ambient");
+    prg->toon_ramp_center_location = glGetUniformLocation(shader_program, "toon_ramp_center");
+    prg->toon_ramp_softness_location = glGetUniformLocation(shader_program, "toon_ramp_softness");
+    prg->toon_highlight_intensity_location = glGetUniformLocation(shader_program, "toon_highlight_intensity");
+    prg->toon_shadow_intensity_location = glGetUniformLocation(shader_program, "toon_shadow_intensity");
 
     LoadShader(prg);
 

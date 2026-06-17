@@ -80,6 +80,7 @@ enum class ShaderOpts {
     TEXEL0_BLEND,
     TEXEL1_BLEND,
     PRIM_DEPTH,
+    TOON, // SOH [Enhancement] toon-lighting variant
     PRISM_SHADER, // 16-bit width
     MAX
 };
@@ -112,6 +113,7 @@ struct CCFeatures {
     bool opt_alpha_threshold;
     bool opt_invisible;
     bool opt_grayscale;
+    bool opt_toon; // SOH [Enhancement] toon lighting
     bool opt_prim_depth;
     bool usedTextures[2];
     bool used_masks[2];
@@ -135,7 +137,7 @@ class GfxRenderingAPI;
 class GfxWindowBackend;
 
 constexpr size_t MAX_SEGMENT_POINTERS = 16;
-constexpr size_t SHADER_ID_SHIFT = 17;
+constexpr size_t SHADER_ID_SHIFT = 18; // SOH [Enhancement] bumped 17->18 to make room for the TOON opt bit
 constexpr int16_t ShaderIdUnmask(int id) {
     return (id >> SHADER_ID_SHIFT) & 0xFFFF;
 }
@@ -219,6 +221,8 @@ struct LoadedVertex {
     float u, v;
     struct RGBA color;
     uint8_t clip_rej;
+    // SOH [Enhancement] Object-space vertex normal, forwarded to the fragment shader for toon lighting.
+    float nx, ny, nz;
 };
 
 struct RawTexMetadata {
@@ -244,6 +248,12 @@ struct RSP {
     float current_lookat_coeffs[2][3]; // lookat_x, lookat_y
     uint8_t current_num_lights;        // includes ambient light
     bool lights_changed;
+
+    // SOH [Enhancement] Toon lighting: the single dominant light chosen for the current object,
+    // recomputed when lights change. Object-space direction, light color, and ambient color (0..1).
+    float toon_light_dir[3];
+    float toon_light_color[3];
+    float toon_ambient[3];
 
     uint32_t geometry_mode;
     int16_t fog_mul, fog_offset;
@@ -303,6 +313,7 @@ struct RDP {
     uint32_t other_mode_l, other_mode_h;
     uint64_t combine_mode;
     bool grayscale;
+    bool toon; // SOH [Enhancement] toon lighting active for the current draw (set by gSPToon)
 
     uint8_t prim_lod_fraction;
     uint16_t prim_depth;
@@ -435,6 +446,9 @@ class Interpreter {
     void ImportTexture(int i, int tile, bool importReplacement);
     void ImportTextureMask(int i, int tile);
     void CalculateNormalDir(const F3DLight_t*, float coeffs[3]);
+    // SOH [Enhancement] Toon lighting: pick the single dominant light for the current object and
+    // cache its object-space direction / color / ambient in the RSP for the fragment shader.
+    void SelectToonLight();
 
     void GfxSpMatrix(uint8_t params, const int32_t* addr);
     void GfxSpPopMatrix(uint32_t count);

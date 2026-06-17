@@ -36,6 +36,10 @@ float4 fog : FOG;
 float4 grayscale : GRAYSCALE;
 @{update_floats(4)}
 @end
+@if(o_toon)
+float3 normal : NORMAL;
+@{update_floats(3)}
+@end
 
 @for(i in 0..o_inputs)
     @if(o_alpha)
@@ -66,6 +70,17 @@ float4 grayscale : GRAYSCALE;
 cbuffer PerFrameCB : register(b0) {
     uint noise_frame;
     float noise_scale;
+    // SOH [Enhancement] Toon lighting. Layout matches the PerFrameCB C++ struct; the pad keeps each
+    // float3 on a 16-byte boundary per HLSL cbuffer packing rules.
+    float2 _toon_pad0;
+    float3 toon_light_dir;
+    float toon_ramp_center;
+    float3 toon_light_color;
+    float toon_ramp_softness;
+    float3 toon_ambient;
+    float toon_highlight_intensity;
+    float toon_shadow_intensity;
+    float3 _toon_pad1;
 }
 
 float random(in float3 value) {
@@ -127,6 +142,9 @@ PSInput VSMain(
 @if(o_grayscale)
     , float4 grayscale : GRAYSCALE
 @end
+@if(o_toon)
+    , float3 normal : NORMAL
+@end
 @for(i in 0..o_inputs)
     @if(o_alpha)
         , float4 input@{i + 1} : INPUT@{i}
@@ -158,6 +176,10 @@ PSInput VSMain(
 
     @if(o_grayscale)
         result.grayscale = grayscale;
+    @end
+
+    @if(o_toon)
+        result.normal = normal;
     @end
 
     @for(i in 0..o_inputs)
@@ -305,6 +327,18 @@ PSOutput PSMain(PSInput input, float4 screenSpace : SV_Position) {
     texel = WRAP(texel, -0.51, 1.51);
     texel = clamp(texel, 0.0, 1.0);
     // TODO discard if alpha is 0?
+
+    // SOH [Enhancement] Toon lighting: re-light the (white-shaded) albedo with the single dominant
+    // light through a soft half-Lambert ramp.
+    @if(o_toon)
+        float3 toonN = normalize(input.normal);
+        float toonNL = dot(toonN, normalize(toon_light_dir)) * 0.5 + 0.5;
+        float toonRamp = smoothstep(toon_ramp_center - toon_ramp_softness, toon_ramp_center + toon_ramp_softness, toonNL);
+        float3 toonLit = toon_ambient + toon_light_color * toon_highlight_intensity;
+        float3 toonShadow = lerp(toonLit, toon_ambient, toon_shadow_intensity);
+        texel.rgb = clamp(texel.rgb * lerp(toonShadow, toonLit, toonRamp), 0.0, 1.0);
+    @end
+
     @if(o_fog)
         @if(o_alpha)
             texel = float4(lerp(texel.rgb, input.fog.rgb, input.fog.a), texel.a);

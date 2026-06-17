@@ -80,7 +80,20 @@ class GfxRenderingAPI {
     virtual ImTextureID GetTextureById(int id) = 0;
     virtual void SetCurrentPrimDepth(float depth) = 0;
 
+    // SOH [Enhancement] Toon lighting: the interpreter pushes the per-object dominant light here
+    // before each batch; backends read the mToon* members in their per-draw uniform paths.
+    virtual void SetToonLighting(const float dir[3], const float color[3], const float ambient[3]) {
+        for (int i = 0; i < 3; i++) {
+            mToonLightDir[i] = dir[i];
+            mToonLightColor[i] = color[i];
+            mToonAmbient[i] = ambient[i];
+        }
+    }
+
   protected:
+    float mToonLightDir[3] = { 0.0f, 0.0f, 1.0f };
+    float mToonLightColor[3] = { 1.0f, 1.0f, 1.0f };
+    float mToonAmbient[3] = { 0.0f, 0.0f, 0.0f };
     int8_t mCurrentDepthTest = 0;
     int8_t mCurrentDepthMask = 0;
     int8_t mCurrentZmodeDecal = 0;

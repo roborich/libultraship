@@ -34,6 +34,7 @@
 
 #include "fast/backends/gfx_rendering_api.h"
 #include "fast/interpreter.h"
+#include "fast/toon_shading.h"
 
 #include <prism/processor.h>
 #include "ship/config/ConsoleVariable.h"
@@ -260,7 +261,9 @@ void GfxRenderingAPIDX11::Init() {
     ZeroMemory(&vertex_buffer_desc, sizeof(D3D11_BUFFER_DESC));
 
     vertex_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
-    vertex_buffer_desc.ByteWidth = 256 * 32 * 3 * sizeof(float); // Same as buf_vbo size in gfx_pc
+    // SOH [Enhancement] 40 floats/vertex (was 32) to match the CPU mBufVbo allocation, which gained
+    // headroom for the toon-lighting normal attribute. Must stay in lockstep with interpreter.cpp.
+    vertex_buffer_desc.ByteWidth = 256 * 40 * 3 * sizeof(float); // Same as buf_vbo size in gfx_pc
     vertex_buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     vertex_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     vertex_buffer_desc.MiscFlags = 0;
@@ -480,6 +483,12 @@ struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shade
                              D3D11_INPUT_PER_VERTEX_DATA,
                              0 };
     }
+    // SOH [Enhancement] Toon lighting object-space normal (order must match the vbo packing).
+    if (cc_features.opt_toon) {
+        ied[ied_index++] = {
+            "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0
+        };
+    }
     for (unsigned int i = 0; i < cc_features.numInputs; i++) {
         DXGI_FORMAT format = cc_features.opt_alpha ? DXGI_FORMAT_R32G32B32A32_FLOAT : DXGI_FORMAT_R32G32B32_FLOAT;
         ied[ied_index++] = { "INPUT", i, format, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 };
@@ -516,6 +525,7 @@ struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shade
     prg->shader_id1 = shader_id1;
     prg->numInputs = cc_features.numInputs;
     prg->numFloats = numFloats;
+    prg->opt_toon = cc_features.opt_toon; // SOH [Enhancement] toon lighting
     prg->usedTextures[0] = cc_features.usedTextures[0];
     prg->usedTextures[1] = cc_features.usedTextures[1];
     prg->usedTextures[2] = cc_features.used_masks[0];
@@ -777,6 +787,30 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
         memcpy(ms.pData, &mPerPrimDepthCbData, sizeof(PerPrimDepthCB));
         mContext->Unmap(mPerPrimDepthCb.Get(), 0);
         mPrimDepthDirty = false;
+    }
+
+    // SOH [Enhancement] Toon lighting: per-object dominant light + ramp shape into the per-frame CB,
+    // re-uploaded per toon draw (WRITE_DISCARD makes this safe). Only the toon pixel shader reads it.
+    if (mShaderProgram->opt_toon) {
+        auto cvars = Ship::Context::GetRawInstance()->GetConsoleVariables();
+        for (int j = 0; j < 3; j++) {
+            mPerFrameCbData.toon_light_dir[j] = mToonLightDir[j];
+            mPerFrameCbData.toon_light_color[j] = mToonLightColor[j];
+            mPerFrameCbData.toon_ambient[j] = mToonAmbient[j];
+        }
+        mPerFrameCbData.toon_ramp_center =
+            cvars->GetFloat(CVAR_TOON_SHADING_RAMP_CENTER, TOON_SHADING_DEFAULT_RAMP_CENTER);
+        mPerFrameCbData.toon_ramp_softness =
+            cvars->GetFloat(CVAR_TOON_SHADING_RAMP_SOFTNESS, TOON_SHADING_DEFAULT_RAMP_SOFTNESS);
+        mPerFrameCbData.toon_highlight_intensity =
+            cvars->GetFloat(CVAR_TOON_SHADING_HIGHLIGHT, TOON_SHADING_DEFAULT_HIGHLIGHT);
+        mPerFrameCbData.toon_shadow_intensity =
+            cvars->GetFloat(CVAR_TOON_SHADING_SHADOW, TOON_SHADING_DEFAULT_SHADOW);
+        D3D11_MAPPED_SUBRESOURCE toon_ms;
+        ZeroMemory(&toon_ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
+        mContext->Map(mPerFrameCb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &toon_ms);
+        memcpy(toon_ms.pData, &mPerFrameCbData, sizeof(PerFrameCB));
+        mContext->Unmap(mPerFrameCb.Get(), 0);
     }
 
     // Set vertex buffer data
@@ -1419,6 +1453,7 @@ std::string gfx_direct3d_common_build_shader(size_t& numFloats, const CCFeatures
         { "o_alpha_threshold", cc_features.opt_alpha_threshold },
         { "o_invisible", cc_features.opt_invisible },
         { "o_grayscale", cc_features.opt_grayscale },
+        { "o_toon", cc_features.opt_toon },
         { "o_prim_depth", cc_features.opt_prim_depth },
         { "o_textures", M_ARRAY(cc_features.usedTextures, bool, 2) },
         { "o_masks", M_ARRAY(cc_features.used_masks, bool, 2) },
