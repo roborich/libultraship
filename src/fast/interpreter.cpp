@@ -4288,6 +4288,13 @@ bool gfx_set_toon_key_handler_custom(F3DGfx** cmd0) {
     Interpreter* gfx = mInstance.lock().get();
     F3DGfx* cmd = *cmd0;
 
+    // SOH [Enhancement] The toon key light is pushed to the GPU once per batch (see Flush) as a single
+    // object-space direction. Several objects that share texture/state are otherwise batched into one
+    // draw, so they would all be lit by whichever object's key was set last (haphazard per-object
+    // lighting, since each object has a different orientation). Flush the pending geometry now, with the
+    // PREVIOUS object's key still in effect, so every toon object becomes its own correctly-lit batch.
+    gfx->Flush();
+
     int8_t dx = (cmd->words.w0 >> 16) & 0xFF;
     int8_t dy = (cmd->words.w0 >> 8) & 0xFF;
     int8_t dz = (cmd->words.w0 >> 0) & 0xFF;
