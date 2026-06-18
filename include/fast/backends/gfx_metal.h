@@ -14,6 +14,11 @@
 #include <simd/simd.h>
 
 static constexpr size_t kMaxVertexBufferPoolSize = 3;
+// SOH [Enhancement] Initial per-frame vertex buffer size (bytes). Matches the CPU mBufVbo
+// stride (256 tris * 40 floats/vertex * 3 verts) with room for ~50 flushes/frame. Large
+// scenes (e.g. Hyrule Field) can need more, so the buffer grows on demand in StartFrame
+// (see mVertexBufferTargetLength) and can never overflow/crash.
+static constexpr size_t kInitialVertexBufferLength = 256 * 40 * 3 * sizeof(float) * 50;
 static constexpr size_t METAL_MAX_MULTISAMPLE_SAMPLE_COUNT = 8;
 static constexpr size_t MAX_PIXEL_DEPTH_COORDS = 1024;
 
@@ -201,6 +206,8 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
 
     int mCurrentVertexBufferPoolIndex = 0;
     MTL::Buffer* mVertexBufferPool[kMaxVertexBufferPoolSize];
+    // SOH [Enhancement] Desired pool-buffer size (bytes); ratchets up when a frame overflows.
+    size_t mVertexBufferTargetLength = kInitialVertexBufferLength;
     std::unordered_map<std::pair<uint64_t, uint32_t>, struct ShaderProgramMetal, hash_pair_shader_ids>
         mShaderProgramPool;
 
