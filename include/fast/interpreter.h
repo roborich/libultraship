@@ -255,6 +255,13 @@ struct RSP {
     float toon_light_color[3];
     float toon_ambient[3];
 
+    // SOH [Enhancement] Toon lighting: a per-object key light supplied by the game (gSPToonKey),
+    // world-space direction + color. When valid it overrides the renderer's own light averaging so
+    // the game can drive a Wind Waker-style sun/torch key with smooth day-night animation.
+    bool toon_key_valid;
+    float toon_key_dir[3];
+    float toon_key_color[3];
+
     uint32_t geometry_mode;
     int16_t fog_mul, fog_offset;
 

@@ -1406,9 +1406,23 @@ void Interpreter::SelectToonLight() {
     mRsp->toon_ambient[1] = mRsp->current_lights[amb_idx].l.col[1] / 255.0f;
     mRsp->toon_ambient[2] = mRsp->current_lights[amb_idx].l.col[2] / 255.0f;
 
+    float(*mv)[4] = mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1];
+
+    // SOH [Enhancement] If the game supplied a key light (gSPToonKey), use it directly: transform the
+    // world-space key direction into object space (treated like a directional light) + the key color.
+    // This lets the game drive a single Wind Waker-style key (sun by day, animating to torches at
+    // night) instead of the renderer's own averaging.
+    if (mRsp->toon_key_valid) {
+        TransposedMatrixMul(mRsp->toon_light_dir, mRsp->toon_key_dir, mv);
+        NormalizeVector(mRsp->toon_light_dir);
+        mRsp->toon_light_color[0] = mRsp->toon_key_color[0];
+        mRsp->toon_light_color[1] = mRsp->toon_key_color[1];
+        mRsp->toon_light_color[2] = mRsp->toon_key_color[2];
+        return;
+    }
+
     // Object origin in view space (only used by the positional fallback path, which OoT actors
     // don't normally hit since point lights are bound as directional).
-    float(*mv)[4] = mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1];
     float obj_pos[3] = { mv[3][0], mv[3][1], mv[3][2] };
 
     // First pass: gather each light's object-space direction, color and luminance weight.
@@ -4264,6 +4278,28 @@ bool gfx_set_toon_handler_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
     gfx->mRdp->toon = cmd->words.w1;
+    // A fresh key must be supplied (per object) after each toon-on; clear any stale one.
+    gfx->mRsp->toon_key_valid = false;
+    return false;
+}
+
+// SOH [Enhancement] Per-object toon key light: world-space direction (3x s8 / 127) + color (3x u8 / 255).
+bool gfx_set_toon_key_handler_custom(F3DGfx** cmd0) {
+    Interpreter* gfx = mInstance.lock().get();
+    F3DGfx* cmd = *cmd0;
+
+    int8_t dx = (cmd->words.w0 >> 16) & 0xFF;
+    int8_t dy = (cmd->words.w0 >> 8) & 0xFF;
+    int8_t dz = (cmd->words.w0 >> 0) & 0xFF;
+    gfx->mRsp->toon_key_dir[0] = dx / 127.0f;
+    gfx->mRsp->toon_key_dir[1] = dy / 127.0f;
+    gfx->mRsp->toon_key_dir[2] = dz / 127.0f;
+    gfx->mRsp->toon_key_color[0] = ((cmd->words.w1 >> 16) & 0xFF) / 255.0f;
+    gfx->mRsp->toon_key_color[1] = ((cmd->words.w1 >> 8) & 0xFF) / 255.0f;
+    gfx->mRsp->toon_key_color[2] = ((cmd->words.w1 >> 0) & 0xFF) / 255.0f;
+    gfx->mRsp->toon_key_valid = true;
+    // The key changes the effective light, so force a recompute on the next vertex.
+    gfx->mRsp->lights_changed = true;
     return false;
 }
 
@@ -4720,6 +4756,7 @@ static constexpr UcodeHandler otrHandlers = {
       { "G_REGBLENDEDTEX", gfx_register_blended_texture_handler_custom } },         // G_REGBLENDEDTEX (0x3f)
     { OTR_G_SETINTENSITY, { "G_SETINTENSITY", gfx_set_intensity_handler_custom } }, // G_SETINTENSITY (0x40)
     { OTR_G_SETTOON, { "G_SETTOON", gfx_set_toon_handler_custom } },                // G_SETTOON (0x41)
+    { OTR_G_SETTOONKEY, { "G_SETTOONKEY", gfx_set_toon_key_handler_custom } },      // G_SETTOONKEY (0x4a)
     { OTR_G_MOVEMEM_HASH, { "OTR_G_MOVEMEM_HASH", gfx_movemem_handler_otr } },      // OTR_G_MOVEMEM_HASH
     { OTR_G_PUSH_SHADER, { "G_PUSH_SHADER", gfx_push_shader } },
     { OTR_G_POP_SHADER, { "G_POP_SHADER", gfx_pop_shader } },
