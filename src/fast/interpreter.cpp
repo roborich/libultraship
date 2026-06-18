@@ -1408,12 +1408,17 @@ void Interpreter::SelectToonLight() {
 
     float(*mv)[4] = mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1];
 
-    // SOH [Enhancement] If the game supplied a key light (gSPToonKey), use it directly: transform the
-    // world-space key direction into object space (treated like a directional light) + the key color.
+    // SOH [Enhancement] If the game supplied a key light (gSPToonKey), use it directly. The key is
+    // world-space and the forwarded normals are now world-space too (see GfxSpVertex), so the key is
+    // used AS-IS — no object-space transform. Transforming it into object space here would only be
+    // correct for one limb's matrix, but a skeletal actor batches many limbs under one light uniform;
+    // keeping everything in world space makes the single uniform correct for every limb.
     // This lets the game drive a single Wind Waker-style key (sun by day, animating to torches at
     // night) instead of the renderer's own averaging.
     if (mRsp->toon_key_valid) {
-        TransposedMatrixMul(mRsp->toon_light_dir, mRsp->toon_key_dir, mv);
+        mRsp->toon_light_dir[0] = mRsp->toon_key_dir[0];
+        mRsp->toon_light_dir[1] = mRsp->toon_key_dir[1];
+        mRsp->toon_light_dir[2] = mRsp->toon_key_dir[2];
         NormalizeVector(mRsp->toon_light_dir);
         mRsp->toon_light_color[0] = mRsp->toon_key_color[0];
         mRsp->toon_light_color[1] = mRsp->toon_key_color[1];
@@ -1713,13 +1718,24 @@ void Interpreter::GfxSpVertex(size_t n_vertices, size_t dest_index, const F3DVtx
             d->color.g = g > 255 ? 255 : g;
             d->color.b = b > 255 ? 255 : b;
 
-            // SOH [Enhancement] Toon lighting: forward the object-space normal to the fragment shader
+            // SOH [Enhancement] Toon lighting: forward the WORLD-space normal to the fragment shader
             // and neutralize the vertex shade so the combiner emits pure albedo. The fragment shader
-            // then re-lights it with the single dominant light through the toon ramp.
+            // then re-lights it with the single dominant light (also world-space, see SelectToonLight)
+            // through the toon ramp.
+            //
+            // The normal must be transformed object->world here, NOT left in object space: a skeletal
+            // actor (Link, NPCs) draws every limb under its own modelview matrix but batches them into
+            // a single draw call, while the light direction is one per-batch uniform. Object-space
+            // normals would each be in a different limb's space yet share that one uniform, so only one
+            // limb could ever be lit correctly. Transforming into world space puts every limb's normal
+            // in the same frame as the world-space key, so the single uniform is correct for all limbs.
+            // (object->world uses the same row-vector convention as the position transform above; the
+            // shader renormalizes, so uniform limb scale is harmless.)
             if (mRdp->toon) {
-                d->nx = vn->n[0] / 127.0f;
-                d->ny = vn->n[1] / 127.0f;
-                d->nz = vn->n[2] / 127.0f;
+                float(*mv)[4] = mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1];
+                d->nx = vn->n[0] * mv[0][0] + vn->n[1] * mv[1][0] + vn->n[2] * mv[2][0];
+                d->ny = vn->n[0] * mv[0][1] + vn->n[1] * mv[1][1] + vn->n[2] * mv[2][1];
+                d->nz = vn->n[0] * mv[0][2] + vn->n[1] * mv[1][2] + vn->n[2] * mv[2][2];
                 d->color.r = 255;
                 d->color.g = 255;
                 d->color.b = 255;
