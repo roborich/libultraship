@@ -1387,16 +1387,10 @@ void Interpreter::CalculateNormalDir(const F3DLight_t* light, float coeffs[3]) {
     Interpreter::NormalizeVector(coeffs);
 }
 
-// SOH [Enhancement] Compute the single effective light for the current object for toon shading.
-//
-// OoT binds actor lights (incl. point lights / fairies) as DIRECTIONAL lights whose color is already
-// distance-attenuated by the game (Lights_BindPoint: col *= 1-(dist/radius)^2) and whose direction
-// points toward the source. A naive "pick the brightest light" hard-switches between the steady
-// environment light and an orbiting point light every frame, which makes the lit side spin and the
-// shading flicker. Instead we take the LUMINANCE-WEIGHTED AVERAGE direction + color: it is still a
-// single direction (one crisp ramp, toon look preserved), the steady environment light anchors it,
-// and a moving point light only nudges it — or smoothly dominates it when it is genuinely the
-// brightest light (e.g. a torch in a dark room). Must run after current_lights_coeffs are computed.
+// SOH [Enhancement] Resolve the single effective light for the current object's toon shading:
+// ambient from the binding's ambient light, and the key direction/colour from the application-supplied
+// gSPToonKey (defaulting to a straight-on white key if none was provided this batch). The application
+// chooses and eases the key; the renderer just consumes it.
 void Interpreter::SelectToonLight() {
     int amb_idx = mRsp->current_num_lights - 1;
     if (amb_idx < 0) {
