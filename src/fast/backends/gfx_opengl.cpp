@@ -25,7 +25,6 @@
 #include "ship/Context.h"
 #include "ship/resource/factory/ShaderFactory.h"
 #include "fast/interpreter.h"
-#include "fast/toon_shading.h"
 #include "ship/config/ConsoleVariable.h"
 
 namespace Fast {
@@ -76,20 +75,16 @@ void GfxRenderingAPIOGL::SetPerDrawUniforms() {
         glUniform1iv(mCurrentShaderProgram->texture_height_location, 2, height);
     }
 
-    // SOH [Enhancement] Toon lighting: per-object dominant light + ramp shape (ramp from CVars).
+    // SOH [Enhancement] Toon lighting: per-object dominant light + frame-global ramp shape, both
+    // pushed in by the application (SetToonLighting / SetToonRamp). No config reads in the framework.
     if (mCurrentShaderProgram->opt_toon) {
-        auto cvars = Ship::Context::GetRawInstance()->GetConsoleVariables();
         glUniform3fv(mCurrentShaderProgram->toon_light_dir_location, 1, mToonLightDir);
         glUniform3fv(mCurrentShaderProgram->toon_light_color_location, 1, mToonLightColor);
         glUniform3fv(mCurrentShaderProgram->toon_ambient_location, 1, mToonAmbient);
-        glUniform1f(mCurrentShaderProgram->toon_ramp_center_location,
-                    cvars->GetFloat(CVAR_TOON_SHADING_RAMP_CENTER, TOON_SHADING_DEFAULT_RAMP_CENTER));
-        glUniform1f(mCurrentShaderProgram->toon_ramp_softness_location,
-                    cvars->GetFloat(CVAR_TOON_SHADING_RAMP_SOFTNESS, TOON_SHADING_DEFAULT_RAMP_SOFTNESS));
-        glUniform1f(mCurrentShaderProgram->toon_highlight_intensity_location,
-                    cvars->GetFloat(CVAR_TOON_SHADING_HIGHLIGHT, TOON_SHADING_DEFAULT_HIGHLIGHT));
-        glUniform1f(mCurrentShaderProgram->toon_shadow_intensity_location,
-                    cvars->GetFloat(CVAR_TOON_SHADING_SHADOW, TOON_SHADING_DEFAULT_SHADOW));
+        glUniform1f(mCurrentShaderProgram->toon_ramp_center_location, mToonRampCenter);
+        glUniform1f(mCurrentShaderProgram->toon_ramp_softness_location, mToonRampSoftness);
+        glUniform1f(mCurrentShaderProgram->toon_highlight_intensity_location, mToonHighlightIntensity);
+        glUniform1f(mCurrentShaderProgram->toon_shadow_intensity_location, mToonShadowIntensity);
     }
 }
 

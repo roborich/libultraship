@@ -34,7 +34,6 @@
 
 #include "fast/backends/gfx_rendering_api.h"
 #include "fast/interpreter.h"
-#include "fast/toon_shading.h"
 
 #include <prism/processor.h>
 #include "ship/config/ConsoleVariable.h"
@@ -261,9 +260,8 @@ void GfxRenderingAPIDX11::Init() {
     ZeroMemory(&vertex_buffer_desc, sizeof(D3D11_BUFFER_DESC));
 
     vertex_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
-    // SOH [Enhancement] 40 floats/vertex (was 32) to match the CPU mBufVbo allocation, which gained
-    // headroom for the toon-lighting normal attribute. Must stay in lockstep with interpreter.cpp.
-    vertex_buffer_desc.ByteWidth = 256 * 40 * 3 * sizeof(float); // Same as buf_vbo size in gfx_pc
+    // Matches the CPU mBufVbo allocation in interpreter.cpp (VBO_MAX_FLOATS_PER_VERTEX floats/vertex).
+    vertex_buffer_desc.ByteWidth = 256 * VBO_MAX_FLOATS_PER_VERTEX * 3 * sizeof(float); // Same as buf_vbo size in gfx_pc
     vertex_buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     vertex_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     vertex_buffer_desc.MiscFlags = 0;
@@ -792,20 +790,15 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
     // SOH [Enhancement] Toon lighting: per-object dominant light + ramp shape into the per-frame CB,
     // re-uploaded per toon draw (WRITE_DISCARD makes this safe). Only the toon pixel shader reads it.
     if (mShaderProgram->opt_toon) {
-        auto cvars = Ship::Context::GetRawInstance()->GetConsoleVariables();
         for (int j = 0; j < 3; j++) {
             mPerFrameCbData.toon_light_dir[j] = mToonLightDir[j];
             mPerFrameCbData.toon_light_color[j] = mToonLightColor[j];
             mPerFrameCbData.toon_ambient[j] = mToonAmbient[j];
         }
-        mPerFrameCbData.toon_ramp_center =
-            cvars->GetFloat(CVAR_TOON_SHADING_RAMP_CENTER, TOON_SHADING_DEFAULT_RAMP_CENTER);
-        mPerFrameCbData.toon_ramp_softness =
-            cvars->GetFloat(CVAR_TOON_SHADING_RAMP_SOFTNESS, TOON_SHADING_DEFAULT_RAMP_SOFTNESS);
-        mPerFrameCbData.toon_highlight_intensity =
-            cvars->GetFloat(CVAR_TOON_SHADING_HIGHLIGHT, TOON_SHADING_DEFAULT_HIGHLIGHT);
-        mPerFrameCbData.toon_shadow_intensity =
-            cvars->GetFloat(CVAR_TOON_SHADING_SHADOW, TOON_SHADING_DEFAULT_SHADOW);
+        mPerFrameCbData.toon_ramp_center = mToonRampCenter;
+        mPerFrameCbData.toon_ramp_softness = mToonRampSoftness;
+        mPerFrameCbData.toon_highlight_intensity = mToonHighlightIntensity;
+        mPerFrameCbData.toon_shadow_intensity = mToonShadowIntensity;
         D3D11_MAPPED_SUBRESOURCE toon_ms;
         ZeroMemory(&toon_ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
         mContext->Map(mPerFrameCb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &toon_ms);

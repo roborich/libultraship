@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <set>
 #include "imconfig.h"
+#include "fast/toon_shading.h"
 
 namespace Fast {
 struct ShaderProgram;
@@ -90,10 +91,25 @@ class GfxRenderingAPI {
         }
     }
 
+    // SOH [Enhancement] Toon lighting: the application pushes the frame-global ramp shape here (the
+    // values are app-side tuning, so the framework never reaches into the app's config to read them).
+    // Backends read the mToonRamp* members in their per-draw uniform paths; they keep their default
+    // (a plain two-tone ramp) until the application overrides them.
+    virtual void SetToonRamp(float center, float softness, float highlight, float shadow) {
+        mToonRampCenter = center;
+        mToonRampSoftness = softness;
+        mToonHighlightIntensity = highlight;
+        mToonShadowIntensity = shadow;
+    }
+
   protected:
     float mToonLightDir[3] = { 0.0f, 0.0f, 1.0f };
     float mToonLightColor[3] = { 1.0f, 1.0f, 1.0f };
     float mToonAmbient[3] = { 0.0f, 0.0f, 0.0f };
+    float mToonRampCenter = TOON_SHADING_DEFAULT_RAMP_CENTER;
+    float mToonRampSoftness = TOON_SHADING_DEFAULT_RAMP_SOFTNESS;
+    float mToonHighlightIntensity = TOON_SHADING_DEFAULT_HIGHLIGHT;
+    float mToonShadowIntensity = TOON_SHADING_DEFAULT_SHADOW;
     int8_t mCurrentDepthTest = 0;
     int8_t mCurrentDepthMask = 0;
     int8_t mCurrentZmodeDecal = 0;

@@ -37,7 +37,6 @@
 #include "libultraship/libultra/abi.h"
 #include "ship/Context.h"
 #include "ship/config/ConsoleVariable.h"
-#include "fast/toon_shading.h"
 
 #include "fast/Fast3dWindow.h"
 
@@ -551,20 +550,18 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
         }
     }
 
-    // SOH [Enhancement] Toon lighting: feed the per-object dominant light + ramp shape (from CVars).
+    // SOH [Enhancement] Toon lighting: feed the per-object dominant light + frame-global ramp shape,
+    // both pushed in by the application (SetToonLighting / SetToonRamp). No config reads here.
     if (mShaderProgram->opt_toon) {
-        auto cvars = Ship::Context::GetRawInstance()->GetConsoleVariables();
         for (int j = 0; j < 3; j++) {
             mDrawUniforms.toonLightDir[j] = mToonLightDir[j];
             mDrawUniforms.toonLightColor[j] = mToonLightColor[j];
             mDrawUniforms.toonAmbient[j] = mToonAmbient[j];
         }
-        mDrawUniforms.toonRampCenter = cvars->GetFloat(CVAR_TOON_SHADING_RAMP_CENTER, TOON_SHADING_DEFAULT_RAMP_CENTER);
-        mDrawUniforms.toonRampSoftness =
-            cvars->GetFloat(CVAR_TOON_SHADING_RAMP_SOFTNESS, TOON_SHADING_DEFAULT_RAMP_SOFTNESS);
-        mDrawUniforms.toonHighlightIntensity =
-            cvars->GetFloat(CVAR_TOON_SHADING_HIGHLIGHT, TOON_SHADING_DEFAULT_HIGHLIGHT);
-        mDrawUniforms.toonShadowIntensity = cvars->GetFloat(CVAR_TOON_SHADING_SHADOW, TOON_SHADING_DEFAULT_SHADOW);
+        mDrawUniforms.toonRampCenter = mToonRampCenter;
+        mDrawUniforms.toonRampSoftness = mToonRampSoftness;
+        mDrawUniforms.toonHighlightIntensity = mToonHighlightIntensity;
+        mDrawUniforms.toonShadowIntensity = mToonShadowIntensity;
     }
 
     if (textures_changed || mPrimDepthDirty || mShaderProgram->opt_toon) {

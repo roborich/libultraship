@@ -114,7 +114,7 @@ Interpreter::Interpreter() {
     mRsp = new RSP();
     mRdp = new RDP();
     // SOH [Enhancement] 40 (was 32) floats/vertex max to leave headroom for the toon normal attribute.
-    mBufVbo = new float[MAX_TRI_BUFFER * (40 * 3)];
+    mBufVbo = new float[MAX_TRI_BUFFER * (VBO_MAX_FLOATS_PER_VERTEX * 3)];
 }
 
 Interpreter::~Interpreter() {
