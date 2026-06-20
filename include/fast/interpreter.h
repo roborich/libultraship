@@ -138,6 +138,11 @@ class GfxWindowBackend;
 
 constexpr size_t MAX_SEGMENT_POINTERS = 16;
 constexpr size_t SHADER_ID_SHIFT = 18; // SOH [Enhancement] bumped 17->18 to make room for the TOON opt bit
+// The prism shader id is packed into the 16 bits starting at SHADER_ID_SHIFT, so the last opt bit
+// (PRISM_SHADER) must sit exactly at that shift. Adding an opt before it without bumping the shift
+// would overlap the id and silently corrupt shader selection — fail the build instead.
+static_assert(static_cast<size_t>(ShaderOpts::PRISM_SHADER) == SHADER_ID_SHIFT,
+              "PRISM_SHADER must be the final ShaderOpts bit, immediately below the packed shader id");
 constexpr int16_t ShaderIdUnmask(int id) {
     return (id >> SHADER_ID_SHIFT) & 0xFFFF;
 }

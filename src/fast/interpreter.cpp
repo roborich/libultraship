@@ -1406,114 +1406,42 @@ void Interpreter::SelectToonLight() {
     mRsp->toon_ambient[1] = mRsp->current_lights[amb_idx].l.col[1] / 255.0f;
     mRsp->toon_ambient[2] = mRsp->current_lights[amb_idx].l.col[2] / 255.0f;
 
-    float(*mv)[4] = mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1];
-
-    // SOH [Enhancement] If the game supplied a key light (gSPToonKey), use it directly. The key is
-    // world-space and the forwarded normals are now world-space too (see GfxSpVertex), so the key is
-    // used AS-IS — no object-space transform. Transforming it into object space here would only be
-    // correct for one limb's matrix, but a skeletal actor batches many limbs under one light uniform;
-    // keeping everything in world space makes the single uniform correct for every limb.
-    // This lets the game drive a single Wind Waker-style key (sun by day, animating to torches at
-    // night) instead of the renderer's own averaging.
-    if (mRsp->toon_key_valid) {
-        mRsp->toon_light_dir[0] = mRsp->toon_key_dir[0];
-        mRsp->toon_light_dir[1] = mRsp->toon_key_dir[1];
-        mRsp->toon_light_dir[2] = mRsp->toon_key_dir[2];
-        NormalizeVector(mRsp->toon_light_dir);
-        mRsp->toon_light_color[0] = mRsp->toon_key_color[0];
-        mRsp->toon_light_color[1] = mRsp->toon_key_color[1];
-        mRsp->toon_light_color[2] = mRsp->toon_key_color[2];
-        return;
-    }
-
-    // Object origin in view space (only used by the positional fallback path, which OoT actors
-    // don't normally hit since point lights are bound as directional).
-    float obj_pos[3] = { mv[3][0], mv[3][1], mv[3][2] };
-
-    // First pass: gather each light's object-space direction, color and luminance weight.
-    int n = 0;
-    float dirs[MAX_LIGHTS][3];
-    float cols[MAX_LIGHTS][3];
-    float weights[MAX_LIGHTS];
-    float total_weight = 0.0f;
-
-    for (int i = 0; i < mRsp->current_num_lights - 1 && n < MAX_LIGHTS; i++) {
-        const F3DLight* light = &mRsp->current_lights[i];
-        float col[3] = { light->l.col[0] / 255.0f, light->l.col[1] / 255.0f, light->l.col[2] / 255.0f };
-        float lum = (col[0] + col[1] + col[2]) / 3.0f;
-        if (lum <= 0.001f) {
-            continue; // attenuated to nothing (out of range)
-        }
-
-        float dir[3];
-        float weight = lum;
-        if ((mRsp->geometry_mode & G_LIGHTING_POSITIONAL) && (light->p.unk3 != 0)) {
-            float to_light[3] = { light->p.pos[0] - obj_pos[0], light->p.pos[1] - obj_pos[1],
-                                  light->p.pos[2] - obj_pos[2] };
-            float dist = sqrtf(to_light[0] * to_light[0] + to_light[1] * to_light[1] + to_light[2] * to_light[2]) +
-                         1e-4f;
-            float distf = floorf(dist);
-            float attenuation =
-                (distf * light->p.unk7 * 2.0f + distf * distf * light->p.unkE / 8.0f) / (float)0xFFFF + 1.0f;
-            weight = lum / attenuation;
-            float dir_world[3] = { to_light[0] / dist, to_light[1] / dist, to_light[2] / dist };
-            TransposedMatrixMul(dir, dir_world, mv);
-            NormalizeVector(dir);
-        } else {
-            dir[0] = mRsp->current_lights_coeffs[i][0];
-            dir[1] = mRsp->current_lights_coeffs[i][1];
-            dir[2] = mRsp->current_lights_coeffs[i][2];
-        }
-
-        dirs[n][0] = dir[0];
-        dirs[n][1] = dir[1];
-        dirs[n][2] = dir[2];
-        cols[n][0] = col[0];
-        cols[n][1] = col[1];
-        cols[n][2] = col[2];
-        weights[n] = weight;
-        total_weight += weight;
-        n++;
-    }
-
-    // Second pass: capped weighted average. Capping each light at a fraction of the total keeps any
-    // single very-close, very-bright light (e.g. a fairy passing right in front of the object) from
-    // blowing out the whole shade — the steady environment light and other lights keep their say.
-    float accum_dir[3] = { 0.0f, 0.0f, 0.0f };
-    float accum_col[3] = { 0.0f, 0.0f, 0.0f };
-    float capped_total = 0.0f;
-    const float max_share = 0.4f;
-    float cap = max_share * total_weight;
-    for (int k = 0; k < n; k++) {
-        float w = weights[k] < cap ? weights[k] : cap;
-        accum_dir[0] += dirs[k][0] * w;
-        accum_dir[1] += dirs[k][1] * w;
-        accum_dir[2] += dirs[k][2] * w;
-        accum_col[0] += cols[k][0] * w;
-        accum_col[1] += cols[k][1] * w;
-        accum_col[2] += cols[k][2] * w;
-        capped_total += w;
-    }
-    total_weight = capped_total;
-
-    float dir_len =
-        sqrtf(accum_dir[0] * accum_dir[0] + accum_dir[1] * accum_dir[1] + accum_dir[2] * accum_dir[2]);
-    if (total_weight > 1e-4f && dir_len > 1e-4f) {
-        mRsp->toon_light_dir[0] = accum_dir[0] / dir_len;
-        mRsp->toon_light_dir[1] = accum_dir[1] / dir_len;
-        mRsp->toon_light_dir[2] = accum_dir[2] / dir_len;
-        mRsp->toon_light_color[0] = accum_col[0] / total_weight;
-        mRsp->toon_light_color[1] = accum_col[1] / total_weight;
-        mRsp->toon_light_color[2] = accum_col[2] / total_weight;
-    } else {
-        // No usable light: straight-on white so the object is at least evenly lit.
+    // SOH [Enhancement] The game supplies one world-space key light per object via gSPToonKey. The
+    // forwarded normals are world-space too (see GfxSpVertex), so the key is used as-is — no
+    // object-space transform (which would only be correct for one limb of a batched skeletal actor,
+    // but they share a single light uniform). The game drives a single Wind Waker-style key (sun by
+    // day, animating to torches at night).
+    if (!mRsp->toon_key_valid) {
+        // A toon batch reached here with no key supplied. Not expected in normal use — the game emits
+        // gSPToonKey before every object's geometry — so default to a straight-on white key that at
+        // least lights the object evenly rather than leaving the shade undefined.
         mRsp->toon_light_dir[0] = 0.0f;
         mRsp->toon_light_dir[1] = 0.0f;
         mRsp->toon_light_dir[2] = 1.0f;
         mRsp->toon_light_color[0] = 1.0f;
         mRsp->toon_light_color[1] = 1.0f;
         mRsp->toon_light_color[2] = 1.0f;
+        return;
     }
+
+    mRsp->toon_light_dir[0] = mRsp->toon_key_dir[0];
+    mRsp->toon_light_dir[1] = mRsp->toon_key_dir[1];
+    mRsp->toon_light_dir[2] = mRsp->toon_key_dir[2];
+    // Guard a zero-length key (s8 quantization can collapse a small direction) so NormalizeVector
+    // doesn't divide by zero and produce NaNs — fall back to straight-on.
+    float key_len2 = mRsp->toon_light_dir[0] * mRsp->toon_light_dir[0] +
+                     mRsp->toon_light_dir[1] * mRsp->toon_light_dir[1] +
+                     mRsp->toon_light_dir[2] * mRsp->toon_light_dir[2];
+    if (key_len2 < 1e-8f) {
+        mRsp->toon_light_dir[0] = 0.0f;
+        mRsp->toon_light_dir[1] = 0.0f;
+        mRsp->toon_light_dir[2] = 1.0f;
+    } else {
+        NormalizeVector(mRsp->toon_light_dir);
+    }
+    mRsp->toon_light_color[0] = mRsp->toon_key_color[0];
+    mRsp->toon_light_color[1] = mRsp->toon_key_color[1];
+    mRsp->toon_light_color[2] = mRsp->toon_key_color[2];
 }
 
 void Interpreter::GfxSpMatrix(uint8_t parameters, const int32_t* addr) {
