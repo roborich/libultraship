@@ -231,7 +231,7 @@ struct LoadedVertex {
     float u, v;
     struct RGBA color;
     uint8_t clip_rej;
-    // SOH [Enhancement] Object-space vertex normal, forwarded to the fragment shader for toon lighting.
+    // SOH [Enhancement] World-space vertex normal, forwarded to the fragment shader for toon lighting.
     float nx, ny, nz;
 };
 
@@ -260,7 +260,7 @@ struct RSP {
     bool lights_changed;
 
     // SOH [Enhancement] Toon lighting: the single dominant light chosen for the current object,
-    // recomputed when lights change. Object-space direction, light color, and ambient color (0..1).
+    // recomputed when lights change. World-space direction, light color, and ambient color (0..1).
     float toon_light_dir[3];
     float toon_light_color[3];
     float toon_ambient[3];
@@ -464,7 +464,7 @@ class Interpreter {
     void ImportTextureMask(int i, int tile);
     void CalculateNormalDir(const F3DLight_t*, float coeffs[3]);
     // SOH [Enhancement] Toon lighting: pick the single dominant light for the current object and
-    // cache its object-space direction / color / ambient in the RSP for the fragment shader.
+    // cache its world-space direction / color / ambient in the RSP for the fragment shader.
     void SelectToonLight();
 
     void GfxSpMatrix(uint8_t params, const int32_t* addr);

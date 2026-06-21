@@ -497,7 +497,7 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
         ++cnt;
     }
 
-    // SOH [Enhancement] Toon lighting object-space normal attribute (order must match the vbo packing).
+    // SOH [Enhancement] Toon lighting world-space normal attribute (order must match the vbo packing).
     if (cc_features.opt_toon) {
         prg->attribLocations[cnt] = glGetAttribLocation(shader_program, "aNormal");
         prg->attribSizes[cnt] = 3;

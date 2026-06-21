@@ -481,7 +481,7 @@ struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shade
                              D3D11_INPUT_PER_VERTEX_DATA,
                              0 };
     }
-    // SOH [Enhancement] Toon lighting object-space normal (order must match the vbo packing).
+    // SOH [Enhancement] Toon lighting world-space normal (order must match the vbo packing).
     if (cc_features.opt_toon) {
         ied[ied_index++] = {
             "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0

@@ -2151,7 +2151,7 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
             mBufVbo[mBufVboLen++] = mRdp->grayscale_color.a / 255.0f; // lerp interpolation factor (not alpha)
         }
 
-        // SOH [Enhancement] Toon lighting: object-space normal (aNormal). The dominant light/ambient
+        // SOH [Enhancement] Toon lighting: world-space normal (aNormal). The dominant light/ambient
         // are sent as uniforms (per draw), not per-vertex, to stay within the vertex-attribute limit.
         if (use_toon) {
             mBufVbo[mBufVboLen++] = v_arr[i]->nx;
@@ -4227,10 +4227,11 @@ bool gfx_set_toon_key_handler_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
     // SOH [Enhancement] The toon key light is pushed to the GPU once per batch (see Flush) as a single
-    // object-space direction. Several objects that share texture/state are otherwise batched into one
-    // draw, so they would all be lit by whichever object's key was set last (haphazard per-object
-    // lighting, since each object has a different orientation). Flush the pending geometry now, with the
-    // PREVIOUS object's key still in effect, so every toon object becomes its own correctly-lit batch.
+    // world-space direction + color. Several objects that share texture/state are otherwise batched into
+    // one draw, so they would all be lit by whichever object's key was set last — each object picks its
+    // own key (the nearest light, or the sun), so a shared batch would mislight all but the last. Flush
+    // the pending geometry now, with the PREVIOUS object's key still in effect, so every toon object
+    // becomes its own correctly-lit batch.
     gfx->Flush();
 
     int8_t dx = (cmd->words.w0 >> 16) & 0xFF;
