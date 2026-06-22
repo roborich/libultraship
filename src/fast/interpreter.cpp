@@ -3593,8 +3593,50 @@ bool gfx_vtx_handler_f3d(F3DGfx** cmd0) {
     return false;
 }
 
+// SOH [Diagnostic] Display-list desync trace ------------------------------------------------------
+// A failed OTR hash lookup mid-render (e.g. the "Unknown crc ..." spam on Lake Hylia's water) is a
+// symptom of the interpreter losing display-list sync: it reads geometry/segment data where it
+// expects a command + 64-bit hash. To find the command that desyncs the stream, gfx_step records
+// every command into this ring while the trace is on (sampled once per frame in Interpreter::Run, so
+// it costs nothing when off), and a failing hash handler dumps the recent history — the last
+// well-formed command before the garbage is the culprit. Enable with console var "gGfxDesyncTrace".
+struct DesyncTraceEntry {
+    int8_t opcode;
+    uint32_t w0;
+    uint32_t w1;
+};
+static constexpr size_t kDesyncRingSize = 32;
+static DesyncTraceEntry sDesyncRing[kDesyncRingSize] = {};
+static size_t sDesyncRingCount = 0; // total recorded; index with % kDesyncRingSize
+static bool sDesyncTraceEnabled = false;
+static int sDesyncDumpBudget = 0; // bounds dumps so a steady desync does not flood the log
+
+static inline void GfxRecordDesyncCommand(int8_t opcode, uint32_t w0, uint32_t w1) {
+    DesyncTraceEntry& e = sDesyncRing[sDesyncRingCount % kDesyncRingSize];
+    e.opcode = opcode;
+    e.w0 = w0;
+    e.w1 = w1;
+    sDesyncRingCount++;
+}
+
+// Defined after GfxGetOpcodeName (used to name the opcodes); declared here for the hash handlers.
+static void GfxDumpDesyncTrace(const char* reason, uint64_t badHash);
+
 bool gfx_vtx_hash_handler_custom(F3DGfx** cmd0) {
     Interpreter* gfx = mInstance.lock().get();
+
+    // The exporter emits a degenerate single-word G_VTX_OTR_HASH (vertex count 0, and NO following hash
+    // word) when it cannot resolve a vertex declaration at export time (it logs "vtxDecl == nullptr!").
+    // Such a command loads no vertices, so treat it as a one-word no-op. Falling through would do the
+    // usual (*cmd0)++ and read the *next* real command as a 64-bit hash — eating that command and
+    // desyncing the rest of the display list (the "Unknown crc 0x06......" spam + missing/garbage
+    // geometry, e.g. Lake Hylia's water). A genuine vertex load always carries a non-zero count, so
+    // this only catches the degenerate form. Returning false (without advancing) lets the dispatcher's
+    // ++cmd consume exactly this one word.
+    if ((((*cmd0)->words.w0 >> 12) & 0xFF) == 0) {
+        return false;
+    }
+
     // Offset added to the start of the vertices
     const uintptr_t offset = (*cmd0)->words.w1;
     // This is a two-part display list command, so increment the instruction pointer so we can get the CRC64
@@ -3623,6 +3665,10 @@ bool gfx_vtx_hash_handler_custom(F3DGfx** cmd0) {
 
             gfx->GfxSpVertex(C0(12, 8), C0(1, 7) - C0(12, 8), vtx);
             (*cmd0)++;
+        } else {
+            // The vertices for this hash are not in the archives — usually because the stream desynced
+            // and this isn't really a G_VTX_OTR_HASH command. Dump the recent command history.
+            GfxDumpDesyncTrace("G_VTX_OTR_HASH lookup failed", hash);
         }
     }
     return false;
@@ -3706,6 +3752,9 @@ bool gfx_dl_otr_hash_handler_custom(F3DGfx** cmd0) {
 
         if (gfx != 0) {
             g_exec_stack.call(cmd, gfx);
+        } else {
+            // Nested DL for this hash is missing — usually a desynced stream misread as G_DL_OTR_HASH.
+            GfxDumpDesyncTrace("G_DL_OTR_HASH lookup failed", hash);
         }
     } else {
         Interpreter* gfx = mInstance.lock().get();
@@ -4821,6 +4870,39 @@ const char* GfxGetOpcodeName(int8_t opcode) {
     return nullptr;
 }
 
+// SOH [Diagnostic] Quiet, null-safe opcode name lookup for the desync dump (GfxGetOpcodeName logs a
+// CRITICAL and returns nullptr for unknown opcodes, which is exactly what the garbage entries are).
+static const char* GfxOpcodeNameSafe(int8_t opcode) {
+    if (otrHandlers.contains(opcode)) {
+        return otrHandlers.at(opcode).first;
+    }
+    if (rdpHandlers.contains(opcode)) {
+        return rdpHandlers.at(opcode).first;
+    }
+    if (ucode_handler_index < ucode_handlers.size() && ucode_handlers[ucode_handler_index]->contains(opcode)) {
+        return ucode_handlers[ucode_handler_index]->at(opcode).first;
+    }
+    return "<unknown>";
+}
+
+static void GfxDumpDesyncTrace(const char* reason, uint64_t badHash) {
+    if (!sDesyncTraceEnabled || sDesyncDumpBudget <= 0) {
+        return;
+    }
+    sDesyncDumpBudget--;
+
+    size_t shown = sDesyncRingCount < kDesyncRingSize ? sDesyncRingCount : kDesyncRingSize;
+    SPDLOG_INFO("==== GFX desync trace: {} (bad hash 0x{:016X}); last {} commands, oldest first ====", reason,
+                badHash, shown);
+    for (size_t i = 0; i < shown; i++) {
+        size_t idx = (sDesyncRingCount - shown + i) % kDesyncRingSize;
+        const DesyncTraceEntry& e = sDesyncRing[idx];
+        SPDLOG_INFO("  {:2}: op 0x{:02X} {:24} w0=0x{:08X} w1=0x{:08X}{}", (int)i, (uint8_t)e.opcode,
+                    GfxOpcodeNameSafe(e.opcode), e.w0, e.w1, (i == shown - 1) ? "   <-- failing command" : "");
+    }
+    SPDLOG_INFO("==== end desync trace (the last well-formed command above is the likely culprit) ====");
+}
+
 // TODO, implement a system where we can get the current opcode handler by writing to the GWords. If the powers that be
 // are OK with that...
 static void gfx_set_ucode_handler(UcodeHandlers ucode) {
@@ -4848,6 +4930,11 @@ static void gfx_step() {
     auto& cmd = g_exec_stack.currCmd();
     auto cmd0 = cmd;
     int8_t opcode = (int8_t)(cmd->words.w0 >> 24);
+
+    // SOH [Diagnostic] Record every command while the desync trace is on (free when off).
+    if (sDesyncTraceEnabled) {
+        GfxRecordDesyncCommand(opcode, (uint32_t)cmd->words.w0, (uint32_t)cmd->words.w1);
+    }
 
 #ifdef USE_GBI_TRACE
     if (cmd->words.trace.valid &&
@@ -5114,6 +5201,17 @@ void Interpreter::RunGuiOnly() {
 
 void Interpreter::Run(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtx_replacements) {
     SpReset();
+
+    // SOH [Diagnostic] Sample the desync-trace toggle once per frame. Re-arm the dump budget on the
+    // off->on edge so flipping it on (in the affected scene) yields a bounded burst of dumps.
+    {
+        bool traceOn =
+            Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger("gGfxDesyncTrace", 0) != 0;
+        if (traceOn && !sDesyncTraceEnabled) {
+            sDesyncDumpBudget = 6;
+        }
+        sDesyncTraceEnabled = traceOn;
+    }
 
     mGetPixelDepthPending.clear();
     mGetPixelDepthCached.clear();
