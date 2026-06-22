@@ -70,9 +70,13 @@ float3 normal : NORMAL;
 cbuffer PerFrameCB : register(b0) {
     uint noise_frame;
     float noise_scale;
-    // SOH [Enhancement] Toon lighting. Layout matches the PerFrameCB C++ struct; the pad keeps each
-    // float3 on a 16-byte boundary per HLSL cbuffer packing rules.
-    float2 _toon_pad0;
+}
+
+// SOH [Enhancement] Toon lighting. Its own cbuffer (b3) so PerFrameCB stays frame-global; only the
+// toon pixel shader declares/reads it. Layout matches the PerToonCB C++ struct; each float3 followed
+// by a float fills a 16-byte register per HLSL cbuffer packing rules.
+@if(o_toon)
+cbuffer PerToonCB : register(b3) {
     float3 toon_light_dir;
     float toon_ramp_center;
     float3 toon_light_color;
@@ -80,8 +84,9 @@ cbuffer PerFrameCB : register(b0) {
     float3 toon_ambient;
     float toon_highlight_intensity;
     float toon_shadow_intensity;
-    float3 _toon_pad1;
+    float3 _toon_pad;
 }
+@end
 
 float random(in float3 value) {
     float random = dot(value, float3(12.9898, 78.233, 37.719));

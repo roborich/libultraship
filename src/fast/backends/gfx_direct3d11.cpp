@@ -300,6 +300,12 @@ void GfxRenderingAPIDX11::Init() {
     ThrowIfFailed(mDevice->CreateBuffer(&constant_buffer_desc, nullptr, mPerPrimDepthCb.GetAddressOf()),
                   mWindowBackend->GetWindowHandle(), "Failed to create per-prim-depth constant buffer.");
 
+    // SOH [Enhancement] Create the toon-lighting constant buffer (register b3), uploaded per toon draw
+
+    constant_buffer_desc.ByteWidth = sizeof(PerToonCB);
+    ThrowIfFailed(mDevice->CreateBuffer(&constant_buffer_desc, nullptr, mPerToonCb.GetAddressOf()),
+                  mWindowBackend->GetWindowHandle(), "Failed to create toon-lighting constant buffer.");
+
     // Create compute shader that can be used to retrieve depth buffer values
 
     const char* shader_source = R"(
@@ -787,23 +793,24 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
         mPrimDepthDirty = false;
     }
 
-    // SOH [Enhancement] Toon lighting: per-object dominant light + ramp shape into the per-frame CB,
-    // re-uploaded per toon draw (WRITE_DISCARD makes this safe). Only the toon pixel shader reads it.
+    // SOH [Enhancement] Toon lighting: per-object dominant light + ramp shape into the dedicated toon
+    // CB (b3), re-uploaded per toon draw (WRITE_DISCARD makes this safe). Only the toon pixel shader
+    // reads it, and PerFrameCB is left untouched so it stays frame-global.
     if (mShaderProgram->opt_toon) {
         for (int j = 0; j < 3; j++) {
-            mPerFrameCbData.toon_light_dir[j] = mToonLightDir[j];
-            mPerFrameCbData.toon_light_color[j] = mToonLightColor[j];
-            mPerFrameCbData.toon_ambient[j] = mToonAmbient[j];
+            mPerToonCbData.toon_light_dir[j] = mToonLightDir[j];
+            mPerToonCbData.toon_light_color[j] = mToonLightColor[j];
+            mPerToonCbData.toon_ambient[j] = mToonAmbient[j];
         }
-        mPerFrameCbData.toon_ramp_center = mToonRampCenter;
-        mPerFrameCbData.toon_ramp_softness = mToonRampSoftness;
-        mPerFrameCbData.toon_highlight_intensity = mToonHighlightIntensity;
-        mPerFrameCbData.toon_shadow_intensity = mToonShadowIntensity;
+        mPerToonCbData.toon_ramp_center = mToonRampCenter;
+        mPerToonCbData.toon_ramp_softness = mToonRampSoftness;
+        mPerToonCbData.toon_highlight_intensity = mToonHighlightIntensity;
+        mPerToonCbData.toon_shadow_intensity = mToonShadowIntensity;
         D3D11_MAPPED_SUBRESOURCE toon_ms;
         ZeroMemory(&toon_ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
-        mContext->Map(mPerFrameCb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &toon_ms);
-        memcpy(toon_ms.pData, &mPerFrameCbData, sizeof(PerFrameCB));
-        mContext->Unmap(mPerFrameCb.Get(), 0);
+        mContext->Map(mPerToonCb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &toon_ms);
+        memcpy(toon_ms.pData, &mPerToonCbData, sizeof(PerToonCB));
+        mContext->Unmap(mPerToonCb.Get(), 0);
     }
 
     // Set vertex buffer data
@@ -848,8 +855,9 @@ void GfxRenderingAPIDX11::OnResize() {
 
 void GfxRenderingAPIDX11::StartFrame() {
     // Set per-frame constant buffer
-    ID3D11Buffer* buffers[3] = { mPerFrameCb.Get(), mPerDrawCb.Get(), mPerPrimDepthCb.Get() };
-    mContext->PSSetConstantBuffers(0, 3, buffers);
+    // SOH [Enhancement] mPerToonCb bound at slot b3 for the toon pixel shader; ignored by other shaders.
+    ID3D11Buffer* buffers[4] = { mPerFrameCb.Get(), mPerDrawCb.Get(), mPerPrimDepthCb.Get(), mPerToonCb.Get() };
+    mContext->PSSetConstantBuffers(0, 4, buffers);
 
     mPerFrameCbData.noise_frame++;
     if (mPerFrameCbData.noise_frame > 150) {
