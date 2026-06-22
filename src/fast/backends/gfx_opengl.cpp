@@ -85,6 +85,7 @@ void GfxRenderingAPIOGL::SetPerDrawUniforms() {
         glUniform1f(mCurrentShaderProgram->toon_ramp_softness_location, mToonRampSoftness);
         glUniform1f(mCurrentShaderProgram->toon_highlight_intensity_location, mToonHighlightIntensity);
         glUniform1f(mCurrentShaderProgram->toon_shadow_intensity_location, mToonShadowIntensity);
+        glUniform1f(mCurrentShaderProgram->toon_debug_location, mToonDebug);
     }
 }
 
@@ -539,6 +540,7 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     prg->toon_ramp_softness_location = glGetUniformLocation(shader_program, "toon_ramp_softness");
     prg->toon_highlight_intensity_location = glGetUniformLocation(shader_program, "toon_highlight_intensity");
     prg->toon_shadow_intensity_location = glGetUniformLocation(shader_program, "toon_shadow_intensity");
+    prg->toon_debug_location = glGetUniformLocation(shader_program, "toon_debug");
 
     LoadShader(prg);
 

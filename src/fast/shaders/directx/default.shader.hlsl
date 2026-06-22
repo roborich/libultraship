@@ -84,7 +84,8 @@ cbuffer PerToonCB : register(b3) {
     float3 toon_ambient;
     float toon_highlight_intensity;
     float toon_shadow_intensity;
-    float3 _toon_pad;
+    float toon_debug;
+    float2 _toon_pad;
 }
 @end
 
@@ -341,7 +342,13 @@ PSOutput PSMain(PSInput input, float4 screenSpace : SV_Position) {
         float toonRamp = smoothstep(toon_ramp_center - toon_ramp_softness, toon_ramp_center + toon_ramp_softness, toonNL);
         float3 toonLit = toon_ambient + toon_light_color * toon_highlight_intensity;
         float3 toonShadow = lerp(toonLit, toon_ambient, toon_shadow_intensity);
-        texel.rgb = clamp(texel.rgb * lerp(toonShadow, toonLit, toonRamp), 0.0, 1.0);
+        if (toon_debug > 0.5) {
+            // Diagnostic view: flat white on the lit side of the ramp, flat black in shadow, albedo
+            // discarded — makes it obvious which draws are receiving toon lighting.
+            texel.rgb = float3(toonRamp, toonRamp, toonRamp);
+        } else {
+            texel.rgb = clamp(texel.rgb * lerp(toonShadow, toonLit, toonRamp), 0.0, 1.0);
+        }
     @end
 
     @if(o_fog)

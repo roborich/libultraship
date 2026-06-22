@@ -562,6 +562,7 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
         mDrawUniforms.toonRampSoftness = mToonRampSoftness;
         mDrawUniforms.toonHighlightIntensity = mToonHighlightIntensity;
         mDrawUniforms.toonShadowIntensity = mToonShadowIntensity;
+        mDrawUniforms.toonDebug = mToonDebug;
     }
 
     if (textures_changed || mPrimDepthDirty || mShaderProgram->opt_toon) {

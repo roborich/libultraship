@@ -134,6 +134,7 @@ struct DrawUniforms {
     simd::float1 toonRampSoftness;
     simd::float1 toonHighlightIntensity;
     simd::float1 toonShadowIntensity;
+    simd::float1 toonDebug;
     simd::float1 prim_depth;
 };
 

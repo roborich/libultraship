@@ -140,6 +140,7 @@
     uniform float toon_ramp_softness;
     uniform float toon_highlight_intensity;
     uniform float toon_shadow_intensity;
+    uniform float toon_debug;
     @end
 
     @if(o_prim_depth)
@@ -283,7 +284,13 @@
                                         toon_ramp_center + toon_ramp_softness, toonNL);
             vec3 toonLit = toon_ambient + toon_light_color * toon_highlight_intensity;
             vec3 toonShadow = mix(toonLit, toon_ambient, toon_shadow_intensity);
-            texel.rgb = clamp(texel.rgb * mix(toonShadow, toonLit, toonRamp), 0.0, 1.0);
+            if (toon_debug > 0.5) {
+                // Diagnostic view: flat white on the lit side of the ramp, flat black in shadow, albedo
+                // discarded — makes it obvious which draws are receiving toon lighting.
+                texel.rgb = vec3(toonRamp);
+            } else {
+                texel.rgb = clamp(texel.rgb * mix(toonShadow, toonLit, toonRamp), 0.0, 1.0);
+            }
         @end
 
         @if(o_fog)

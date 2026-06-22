@@ -95,11 +95,15 @@ class GfxRenderingAPI {
     // values are app-side tuning, so the framework never reaches into the app's config to read them).
     // Backends read the mToonRamp* members in their per-draw uniform paths; they keep their default
     // (a plain two-tone ramp) until the application overrides them.
-    virtual void SetToonRamp(float center, float softness, float highlight, float shadow) {
+    // debug != 0 switches the toon variant to a diagnostic view: each relit object is drawn as flat
+    // white on the lit side of the ramp and flat black on the shadow side (albedo discarded), so it is
+    // obvious at a glance which draws actually receive toon lighting.
+    virtual void SetToonRamp(float center, float softness, float highlight, float shadow, float debug) {
         mToonRampCenter = center;
         mToonRampSoftness = softness;
         mToonHighlightIntensity = highlight;
         mToonShadowIntensity = shadow;
+        mToonDebug = debug;
     }
 
   protected:
@@ -110,6 +114,7 @@ class GfxRenderingAPI {
     float mToonRampSoftness = TOON_SHADING_DEFAULT_RAMP_SOFTNESS;
     float mToonHighlightIntensity = TOON_SHADING_DEFAULT_HIGHLIGHT;
     float mToonShadowIntensity = TOON_SHADING_DEFAULT_SHADOW;
+    float mToonDebug = 0.0f;
     int8_t mCurrentDepthTest = 0;
     int8_t mCurrentDepthMask = 0;
     int8_t mCurrentZmodeDecal = 0;

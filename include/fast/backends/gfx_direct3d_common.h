@@ -30,7 +30,8 @@ struct PerToonCB {
     float toon_ambient[3];
     float toon_highlight_intensity;
     float toon_shadow_intensity;
-    float _toon_pad[3];
+    float toon_debug;
+    float _toon_pad[2];
 };
 
 struct PerDrawCB {

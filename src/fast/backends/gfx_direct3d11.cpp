@@ -806,6 +806,7 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
         mPerToonCbData.toon_ramp_softness = mToonRampSoftness;
         mPerToonCbData.toon_highlight_intensity = mToonHighlightIntensity;
         mPerToonCbData.toon_shadow_intensity = mToonShadowIntensity;
+        mPerToonCbData.toon_debug = mToonDebug;
         D3D11_MAPPED_SUBRESOURCE toon_ms;
         ZeroMemory(&toon_ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
         mContext->Map(mPerToonCb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &toon_ms);

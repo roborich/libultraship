@@ -20,6 +20,7 @@ struct DrawUniforms {
     float toonRampSoftness;
     float toonHighlightIntensity;
     float toonShadowIntensity;
+    float toonDebug;
     @if(o_prim_depth)
     float prim_depth;
     @end
@@ -297,7 +298,13 @@ fragment FragOut fragmentShader(
         float3 toonLit = float3(drawUniforms.toonAmbient) +
                          float3(drawUniforms.toonLightColor) * drawUniforms.toonHighlightIntensity;
         float3 toonShadow = mix(toonLit, float3(drawUniforms.toonAmbient), drawUniforms.toonShadowIntensity);
-        texel.xyz = clamp(texel.xyz * mix(toonShadow, toonLit, toonRamp), 0.0, 1.0);
+        if (drawUniforms.toonDebug > 0.5) {
+            // Diagnostic view: flat white on the lit side of the ramp, flat black in shadow, albedo
+            // discarded — makes it obvious which draws are receiving toon lighting.
+            texel.xyz = float3(toonRamp);
+        } else {
+            texel.xyz = clamp(texel.xyz * mix(toonShadow, toonLit, toonRamp), 0.0, 1.0);
+        }
     @end
 
     @if(o_fog)
