@@ -52,6 +52,8 @@ class ResourceLoader {
                                                                         std::shared_ptr<BinaryReader> headerReader);
     static std::shared_ptr<ResourceInitData> ReadResourceInitDataXml(const std::string& filePath,
                                                                      std::shared_ptr<tinyxml2::XMLDocument> document);
+    std::shared_ptr<ResourceInitData> ReadResourceInitDataJson(const std::string& filePath,
+                                                               std::shared_ptr<File> fileToLoad);
     static std::shared_ptr<ResourceInitData> ReadResourceInitDataPng(const std::string& filePath,
                                                                      std::shared_ptr<BinaryReader> headerReader);
     std::shared_ptr<BinaryReader> CreateBinaryReader(std::shared_ptr<File> fileToLoad,

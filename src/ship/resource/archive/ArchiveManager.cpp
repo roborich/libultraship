@@ -47,6 +47,19 @@ std::shared_ptr<File> ArchiveManager::LoadFile(const std::string& filePath) {
     return LoadFile(CRC64(filePath.c_str()));
 }
 
+std::vector<std::shared_ptr<File>> ArchiveManager::LoadFileFromAllLayers(const std::string& filePath) {
+    std::vector<std::shared_ptr<File>> layers;
+    for (const auto& archive : mArchives) {
+        if (archive->HasFile(filePath)) {
+            auto file = archive->LoadFile(filePath);
+            if (file != nullptr && file->Buffer != nullptr) {
+                layers.push_back(file);
+            }
+        }
+    }
+    return layers;
+}
+
 std::shared_ptr<File> ArchiveManager::LoadFile(uint64_t hash) {
     auto archive = mFileToArchive[hash];
     if (archive == nullptr) {
