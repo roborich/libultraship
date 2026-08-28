@@ -13,7 +13,13 @@ ResourceFactoryBinaryMatrixV0::ReadResource(std::shared_ptr<Ship::File> file,
     auto matrix = std::make_shared<Matrix>(initData);
     auto reader = std::get<std::shared_ptr<Ship::BinaryReader>>(file->Reader);
 
-#if defined(GBI_FLOAT_MTX) && !defined(GBI_FLOATS)
+#if defined(GBI_FLOATS)
+    for (size_t i = 0; i < 4; i++) {
+        for (size_t j = 0; j < 4; j++) {
+            matrix->Matrx.mf[i][j] = reader->ReadFloat();
+        }
+    }
+#elif defined(GBI_FLOAT_MTX)
     // Stored data is the N64 s16.16 layout (16 int-part words then 16 frac-part words); unpack to float.
     int32_t words[16];
     for (size_t i = 0; i < 16; i++) {
@@ -30,11 +36,7 @@ ResourceFactoryBinaryMatrixV0::ReadResource(std::shared_ptr<Ship::File> file,
 #else
     for (size_t i = 0; i < 4; i++) {
         for (size_t j = 0; j < 4; j++) {
-#ifdef GBI_FLOATS
-            matrix->Matrx.mf[i][j] = reader->ReadFloat();
-#else
             matrix->Matrx.m[i][j] = reader->ReadInt32();
-#endif
         }
     }
 #endif

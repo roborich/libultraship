@@ -1135,7 +1135,10 @@ void Interpreter::GfxSpMatrix(uint8_t parameters, const int32_t* addr) {
     float matrix[4][4];
 
     if (auto it = mCurMtxReplacements->find((Mtx*)addr); it != mCurMtxReplacements->end()) {
-#if !defined(GBI_FLOATS) && !defined(GBI_FLOAT_MTX)
+#if defined(GBI_FLOATS) || defined(GBI_FLOAT_MTX)
+        // Float matrices: no fixed-point quantisation (the int cast below overflows past +/-32767).
+        memcpy(matrix, it->second.mf, sizeof(matrix));
+#else
         for (int i = 0; i < 4; i++) {
             for (int j = 0; j < 4; j++) {
                 float v = it->second.mf[i][j];
@@ -1143,12 +1146,12 @@ void Interpreter::GfxSpMatrix(uint8_t parameters, const int32_t* addr) {
                 matrix[i][j] = as_int * (1.0f / 65536.0f);
             }
         }
-#else
-        // Float matrices: no fixed-point quantisation (the int cast above overflows past +/-32767).
-        memcpy(matrix, it->second.mf, sizeof(matrix));
 #endif
     } else {
-#if !defined(GBI_FLOATS) && !defined(GBI_FLOAT_MTX)
+#if defined(GBI_FLOATS) || defined(GBI_FLOAT_MTX)
+        // For a modified GBI where fixed point values are replaced with floats
+        memcpy(matrix, addr, sizeof(matrix));
+#else
         // Original GBI where fixed point matrices are used
         for (int i = 0; i < 4; i++) {
             for (int j = 0; j < 4; j += 2) {
@@ -1158,9 +1161,6 @@ void Interpreter::GfxSpMatrix(uint8_t parameters, const int32_t* addr) {
                 matrix[i][j + 1] = (int32_t)((int_part << 16) | (frac_part & 0xffff)) / 65536.0f;
             }
         }
-#else
-        // For a modified GBI where fixed point values are replaced with floats
-        memcpy(matrix, addr, sizeof(matrix));
 #endif
     }
 

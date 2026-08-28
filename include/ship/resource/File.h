@@ -18,7 +18,8 @@ class Archive;
 
 #define RESOURCE_FORMAT_BINARY 0
 #define RESOURCE_FORMAT_XML 1
-#define RESOURCE_FORMAT_JSON 2 // first byte '{'; type/version from "$schema": "<type>/<version>"
+// JSON: first byte '{'; type and version come from a top-level "$schema": "<type>/<version>"
+#define RESOURCE_FORMAT_JSON 2
 
 struct ResourceInitData {
     std::shared_ptr<Archive> Parent;

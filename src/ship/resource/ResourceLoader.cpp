@@ -43,6 +43,10 @@ bool ResourceLoader::RegisterResourceFactory(std::shared_ptr<ResourceFactory> fa
 
     ResourceFactoryKey key{ .resourceFormat = format, .resourceType = type, .resourceVersion = version };
     if (mFactories.contains(key)) {
+        // Registering the same factory instance again under another type name only adds the name alias.
+        if (mFactories[key] == factory) {
+            return true;
+        }
         SPDLOG_ERROR("Failed to register resource factory: factory with key {}{}{} already exists", format, type,
                      version);
         return false;
@@ -282,38 +286,35 @@ ResourceLoader::ReadResourceInitDataBinary(const std::string& filePath, std::sha
 }
 
 /**
- * JSON resources declare their type as "$schema": "<type name>/<version>", e.g. "unbound/scene/1".
- * Only that one key is located here; the factory parses the document.
+ * JSON resources declare their type as a top-level "$schema": "<type name>/<version>", e.g. "unbound/scene/1".
+ * A patch layer may omit it, so every mounted layer is searched, topmost first. Only that one key is read here;
+ * the factory parses the document.
  */
+static std::string FindJsonSchema(const std::vector<std::shared_ptr<File>>& layers) {
+    for (auto it = layers.rbegin(); it != layers.rend(); ++it) {
+        auto doc = nlohmann::json::parse((*it)->Buffer->begin(), (*it)->Buffer->end(), nullptr, false, true);
+        if (doc.is_object() && doc.contains("$schema") && doc["$schema"].is_string()) {
+            return doc["$schema"].get<std::string>();
+        }
+    }
+    return "";
+}
+
 std::shared_ptr<ResourceInitData> ResourceLoader::ReadResourceInitDataJson(const std::string& filePath,
                                                                            std::shared_ptr<File> fileToLoad) {
     auto resourceInitData = CreateDefaultResourceInitData();
     resourceInitData->Path = filePath;
     resourceInitData->Format = RESOURCE_FORMAT_JSON;
-    resourceInitData->IsCustom = false;
 
-    // A patch layer may omit "$schema"; look through every mounted layer (top first) for one.
-    std::string_view text(fileToLoad->Buffer->data(), fileToLoad->Buffer->size());
-    auto keyPos = text.find("\"$schema\"");
-    std::vector<std::shared_ptr<File>> layers;
-    if (keyPos == std::string_view::npos) {
-        layers = Context::GetInstance()->GetResourceManager()->GetArchiveManager()->LoadFileFromAllLayers(filePath);
-        for (auto it = layers.rbegin(); it != layers.rend() && keyPos == std::string_view::npos; ++it) {
-            text = std::string_view((*it)->Buffer->data(), (*it)->Buffer->size());
-            keyPos = text.find("\"$schema\"");
-        }
+    std::string schema = FindJsonSchema({ fileToLoad });
+    if (schema.empty()) {
+        auto archives = Context::GetInstance()->GetResourceManager()->GetArchiveManager();
+        schema = FindJsonSchema(archives->LoadFileFromAllLayers(filePath));
     }
-    if (keyPos == std::string_view::npos) {
-        SPDLOG_ERROR("JSON resource {} has no \"$schema\" key in any layer", filePath);
+    if (schema.empty()) {
+        SPDLOG_ERROR("JSON resource {} has no \"$schema\" string in any layer", filePath);
         return resourceInitData;
     }
-    auto open = text.find('"', text.find(':', keyPos) + 1);
-    auto close = open == std::string_view::npos ? open : text.find('"', open + 1);
-    if (open == std::string_view::npos || close == std::string_view::npos) {
-        SPDLOG_ERROR("JSON resource {} has a malformed \"$schema\" value", filePath);
-        return resourceInitData;
-    }
-    std::string schema(text.substr(open + 1, close - open - 1));
     auto slash = schema.find_last_of('/');
     std::string typeName = slash == std::string::npos ? schema : schema.substr(0, slash);
     int32_t version = slash == std::string::npos ? 0 : std::atoi(schema.c_str() + slash + 1);
