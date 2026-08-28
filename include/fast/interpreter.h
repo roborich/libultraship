@@ -242,7 +242,7 @@ struct RSP {
     bool lights_changed;
 
     uint32_t geometry_mode;
-    int16_t fog_mul, fog_offset;
+    float fog_mul, fog_offset; // SOH [Unbound] float so fog can start beyond the s16 range (OTR_G_FOGF)
 
     uint32_t extra_geometry_mode;
 

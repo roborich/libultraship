@@ -189,6 +189,7 @@
 #define G_DL_INDEX 0x3d
 #define G_READFB 0x3e
 #define G_SETINTENSITY 0x40
+#define G_FOGF 0x41 // SOH [Unbound] float fog factor (see OTR_G_FOGF in fast/lus_gbi.h)
 #define G_LOAD_SHADER 0x43
 #define G_SETTILESIZE_INTERP 0x44
 #define G_SETTARGETINTERPINDEX 0x45
@@ -1861,6 +1862,8 @@ typedef union Gfx {
 #endif /* F3DEX_GBI_2 */
 
 #define gsSPPushCD(pkt, dl) gDma1p(pkt, G_PUSHCD, dl, 0, G_DL_PUSH)
+// SOH [Unbound] float fog factor: `factor` points at { f32 mul, f32 offset } (same math as gSPFogPosition, unpacked)
+#define gSPFogFactorF(pkt, factor) gDma1p(pkt, G_FOGF, factor, 0, 0)
 #define __gSPDisplayList(pkt, dl) gDma1p(pkt, G_DL, dl, 0, G_DL_PUSH)
 #define gsSPDisplayList(dl) gsDma1p(G_DL, dl, 0, G_DL_PUSH)
 #define gsSPDisplayListOTRHash(dl) gsDma1p(G_DL_OTR_HASH, dl, 0, G_DL_PUSH)

@@ -3951,6 +3951,20 @@ bool gfx_extra_geometry_mode_handler_custom(F3DGfx** cmd0) {
     return false;
 }
 
+// SOH [Unbound] OTR_G_FOGF: fog factor as two floats (w1 points at { mul, offset }). Same math as G_MW_FOG
+// (fog = ndcZ * mul + offset, 0..255) without the s16 packing, which capped where fog could start.
+bool gfx_fog_factor_float_handler_custom(F3DGfx** cmd0) {
+    Interpreter* gfx = mInstance.lock().get();
+    F3DGfx* cmd = *(cmd0);
+    const float* f = (const float*)gfx->SegAddr(cmd->words.w1);
+
+    if (f != nullptr) {
+        gfx->mRsp->fog_mul = f[0];
+        gfx->mRsp->fog_offset = f[1];
+    }
+    return false;
+}
+
 bool gfx_stubbed_command_handler(F3DGfx** cmd0) {
     return false;
 }
@@ -4047,6 +4061,7 @@ static constexpr UcodeHandler otrHandlers = {
     { OTR_G_REGBLENDEDTEX,
       { "G_REGBLENDEDTEX", gfx_register_blended_texture_handler_custom } },         // G_REGBLENDEDTEX (0x3f)
     { OTR_G_SETINTENSITY, { "G_SETINTENSITY", gfx_set_intensity_handler_custom } }, // G_SETINTENSITY (0x40)
+    { OTR_G_FOGF, { "G_FOGF", gfx_fog_factor_float_handler_custom } },              // G_FOGF (0x41)
     { OTR_G_MOVEMEM_HASH, { "OTR_G_MOVEMEM_HASH", gfx_movemem_handler_otr } },      // OTR_G_MOVEMEM_HASH
     { OTR_G_LOAD_SHADER, { "G_LOAD_SHADER", gfx_set_shader_custom } },
 };
