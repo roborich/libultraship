@@ -845,10 +845,12 @@ constexpr int8_t RDP_G_SETTARGETINTERPINDEX = OPCODE(0x45);
  * Vertex (set up for use with colors)
  */
 typedef struct {
-#ifndef GBI_FLOATS
-    short ob[3]; /* x, y, z */
-#else
+#if defined(GBI_FLOATS)
     float ob[3]; /* x, y, z */
+#elif defined(GBI_S32_VTX)
+    int32_t ob[3]; /* x, y, z */
+#else
+    short ob[3]; /* x, y, z */
 #endif
     unsigned short flag;
     short tc[2];         /* texture coord */
@@ -859,10 +861,12 @@ typedef struct {
  * Vertex (set up for use with normals)
  */
 typedef struct {
-#ifndef GBI_FLOATS
-    short ob[3]; /* x, y, z */
-#else
+#if defined(GBI_FLOATS)
     float ob[3]; /* x, y, z */
+#elif defined(GBI_S32_VTX)
+    int32_t ob[3]; /* x, y, z */
+#else
+    short ob[3]; /* x, y, z */
 #endif
     unsigned short flag;
     short tc[2];      /* texture coord */
@@ -875,6 +879,11 @@ typedef union F3DVtx {
     F3DVtx_tn n; /* Use this one for normals */
     long long int force_structure_alignment;
 } F3DVtx;
+
+// Vertices are stored in OTR/O2R archives in the original 16-byte N64 layout (s16 positions), and exported
+// display lists carry BYTE offsets into that data. sizeof(F3DVtx) is not that size when GBI_S32_VTX is on,
+// so an exported byte offset must be divided by this - never by sizeof(F3DVtx) - to get an element index.
+#define OTR_EXPORTED_VTX_SIZE 16
 
 /*
  * Sprite structure

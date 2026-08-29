@@ -1014,10 +1014,12 @@
  * Vertex (set up for use with colors)
  */
 typedef struct {
-#ifndef GBI_FLOATS
-    short ob[3]; /* x, y, z */
-#else
+#if defined(GBI_FLOATS)
     float ob[3]; /* x, y, z */
+#elif defined(GBI_S32_VTX)
+    int32_t ob[3]; /* x, y, z */
+#else
+    short ob[3]; /* x, y, z */
 #endif
     unsigned short flag;
     short tc[2];         /* texture coord */
@@ -1028,10 +1030,12 @@ typedef struct {
  * Vertex (set up for use with normals)
  */
 typedef struct {
-#ifndef GBI_FLOATS
-    short ob[3]; /* x, y, z */
-#else
+#if defined(GBI_FLOATS)
     float ob[3]; /* x, y, z */
+#elif defined(GBI_S32_VTX)
+    int32_t ob[3]; /* x, y, z */
+#else
+    short ob[3]; /* x, y, z */
 #endif
     unsigned short flag;
     short tc[2];      /* texture coord */

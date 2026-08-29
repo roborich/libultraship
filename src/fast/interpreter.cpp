@@ -2697,6 +2697,24 @@ void* Interpreter::SegAddr(uintptr_t w1) {
     }
 }
 
+// Vertices reached through a segment (a runtime vertex buffer, e.g. the Skin system's segment 8) are addressed
+// by a BYTE offset that was encoded when a vertex was 16 bytes. sizeof(F3DVtx) is larger under GBI_S32_VTX,
+// so the offset must be converted to an element index and re-scaled, or every vertex past the first is
+// misaligned. Identical to SegAddr when the two sizes agree.
+F3DVtx* Interpreter::SegAddrVtx(uintptr_t w1) {
+    if (w1 & 1) {
+        uint32_t segNum = (uint32_t)(w1 >> 24);
+
+        uint32_t offset = w1 & 0x00FFFFFE;
+
+        if (mSegmentPointers[segNum] != 0) {
+            return (F3DVtx*)(mSegmentPointers[segNum] +
+                             (size_t)(offset / OTR_EXPORTED_VTX_SIZE) * sizeof(F3DVtx));
+        }
+    }
+    return (F3DVtx*)w1;
+}
+
 #define C0(pos, width) ((cmd->words.w0 >> (pos)) & ((1U << width) - 1))
 #define C1(pos, width) ((cmd->words.w1 >> (pos)) & ((1U << width) - 1))
 
@@ -3044,7 +3062,7 @@ bool gfx_vtx_handler_f3dex2(F3DGfx** cmd0) {
     Interpreter* gfx = mInstance.lock().get();
     F3DGfx* cmd = *cmd0;
 
-    gfx->GfxSpVertex(C0(12, 8), C0(1, 7) - C0(12, 8), (const F3DVtx*)gfx->SegAddr(cmd->words.w1));
+    gfx->GfxSpVertex(C0(12, 8), C0(1, 7) - C0(12, 8), gfx->SegAddrVtx(cmd->words.w1));
 
     return false;
 }
@@ -3052,7 +3070,7 @@ bool gfx_vtx_handler_f3dex2(F3DGfx** cmd0) {
 bool gfx_vtx_handler_f3dex(F3DGfx** cmd0) {
     Interpreter* gfx = mInstance.lock().get();
     F3DGfx* cmd = *cmd0;
-    gfx->GfxSpVertex(C0(10, 6), C0(17, 7), (const F3DVtx*)gfx->SegAddr(cmd->words.w1));
+    gfx->GfxSpVertex(C0(10, 6), C0(17, 7), gfx->SegAddrVtx(cmd->words.w1));
 
     return false;
 }
@@ -3061,7 +3079,8 @@ bool gfx_vtx_handler_f3d(F3DGfx** cmd0) {
     Interpreter* gfx = mInstance.lock().get();
     F3DGfx* cmd = *cmd0;
 
-    gfx->GfxSpVertex((C0(0, 16)) / sizeof(F3DVtx), C0(16, 4), (const F3DVtx*)gfx->SegAddr(cmd->words.w1));
+    // The packed length is a byte count over the archive's vertex size, not the runtime struct's.
+    gfx->GfxSpVertex((C0(0, 16)) / OTR_EXPORTED_VTX_SIZE, C0(16, 4), gfx->SegAddrVtx(cmd->words.w1));
 
     return false;
 }
@@ -3086,7 +3105,9 @@ bool gfx_vtx_hash_handler_custom(F3DGfx** cmd0) {
         F3DVtx* vtx = (F3DVtx*)Ship::Context::GetInstance()->GetResourceManager()->GetResourceRawPointer(hash);
 
         if (vtx != NULL) {
-            vtx = (F3DVtx*)((char*)vtx + offset);
+            // The exported offset is a byte offset into the vertex resource, encoded when vertices were
+            // 16 bytes. Convert to an element index so it survives a change to sizeof(F3DVtx).
+            vtx += offset / OTR_EXPORTED_VTX_SIZE;
 
             (*cmd0)--;
             F3DGfx* cmd = *cmd0;

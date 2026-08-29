@@ -462,6 +462,9 @@ class Interpreter {
 
     void SpReset();
     void* SegAddr(uintptr_t w1);
+    // Same, for vertex references: the encoded offset is in units of the archive's 16-byte vertex,
+    // which is not sizeof(F3DVtx) under GBI_S32_VTX. See OTR_EXPORTED_VTX_SIZE.
+    F3DVtx* SegAddrVtx(uintptr_t w1);
 
     static const char* CCMUXtoStr(uint32_t ccmux);
     static const char* ACMUXtoStr(uint32_t acmux);
