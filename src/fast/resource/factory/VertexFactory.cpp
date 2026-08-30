@@ -5,7 +5,7 @@
 #include <tinyxml2.h>
 
 namespace Fast {
-void ReadVertexRecords(Ship::BinaryReader& reader, Vertex& vertex, uint32_t count, bool s32Positions) {
+static void ReadVertexRecords(Ship::BinaryReader& reader, Vertex& vertex, uint32_t count, bool s32Positions) {
     vertex.VertexList.reserve(count);
     // 3 * (s16 | s32) pos + u16 flag + 2 * s16 tc + 4 * u8 colour
     vertex.RecordSize = s32Positions ? 22 : 16;
@@ -32,16 +32,19 @@ void ReadVertexRecords(Ship::BinaryReader& reader, Vertex& vertex, uint32_t coun
     }
 }
 
-static std::shared_ptr<Ship::IResource> ReadVertexResource(std::shared_ptr<Ship::File> file,
-                                                           std::shared_ptr<Ship::ResourceInitData> initData,
-                                                           bool s32Positions) {
+std::shared_ptr<Vertex> ReadVertexResource(Ship::BinaryReader& reader, std::shared_ptr<Ship::ResourceInitData> initData,
+                                           uint32_t count, bool s32Positions) {
     auto vertex = std::make_shared<Vertex>(initData);
-    auto reader = std::get<std::shared_ptr<Ship::BinaryReader>>(file->Reader);
-
-    uint32_t count = reader->ReadUInt32();
-    ReadVertexRecords(*reader, *vertex, count, s32Positions);
-
+    ReadVertexRecords(reader, *vertex, count, s32Positions);
     return vertex;
+}
+
+static std::shared_ptr<Ship::IResource> ReadVertexFile(std::shared_ptr<Ship::File> file,
+                                                       std::shared_ptr<Ship::ResourceInitData> initData,
+                                                       bool s32Positions) {
+    auto reader = std::get<std::shared_ptr<Ship::BinaryReader>>(file->Reader);
+    uint32_t count = reader->ReadUInt32();
+    return ReadVertexResource(*reader, initData, count, s32Positions);
 }
 
 std::shared_ptr<Ship::IResource>
@@ -50,7 +53,7 @@ ResourceFactoryBinaryVertexV0::ReadResource(std::shared_ptr<Ship::File> file,
     if (!FileHasValidFormatAndReader(file, initData)) {
         return nullptr;
     }
-    return ReadVertexResource(file, initData, false);
+    return ReadVertexFile(file, initData, false);
 }
 
 std::shared_ptr<Ship::IResource>
@@ -59,7 +62,7 @@ ResourceFactoryBinaryVertexV1::ReadResource(std::shared_ptr<Ship::File> file,
     if (!FileHasValidFormatAndReader(file, initData)) {
         return nullptr;
     }
-    return ReadVertexResource(file, initData, true);
+    return ReadVertexFile(file, initData, true);
 }
 
 std::shared_ptr<Ship::IResource>

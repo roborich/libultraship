@@ -11,11 +11,13 @@ class BinaryReader;
 namespace Fast {
 class Vertex;
 
-// Reads `count` vertex records into `vertex` and sets its RecordSize: the vanilla 16-byte record (s16
-// positions) or the 22-byte v1 record (s32 positions, otherwise identical). Shared by every factory that
-// carries vertices - the Vertex resource here and the game's generic Array resource - so the two encodings
-// are defined once.
-void ReadVertexRecords(Ship::BinaryReader& reader, Vertex& vertex, uint32_t count, bool s32Positions);
+// Builds a Vertex resource from `count` records at the reader's position and sets its RecordSize: the
+// vanilla 16-byte record (s16 positions) or the 22-byte v1 record (s32 positions, otherwise identical).
+// Shared by every factory that carries vertices - the Vertex resource here and the game's generic Array
+// resource - so the two encodings are defined once, and so a caller never needs the full Vtx type (whose
+// libultra header defines s16/u16 as macros on some platforms).
+std::shared_ptr<Vertex> ReadVertexResource(Ship::BinaryReader& reader, std::shared_ptr<Ship::ResourceInitData> initData,
+                                           uint32_t count, bool s32Positions);
 
 class ResourceFactoryBinaryVertexV0 final : public Ship::ResourceFactoryBinary {
   public:
