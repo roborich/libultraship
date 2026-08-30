@@ -2702,6 +2702,9 @@ void* Interpreter::SegAddr(uintptr_t w1) {
 // by a BYTE offset that was encoded when a vertex was 16 bytes. sizeof(F3DVtx) is larger under GBI_S32_VTX,
 // so the offset must be converted to an element index and re-scaled, or every vertex past the first is
 // misaligned. Identical to SegAddr when the two sizes agree.
+// Only correct for offsets authored in 16-byte units, i.e. every ROM-exported display list. A runtime-built
+// segmented address computed with sizeof(Vtx) (e.g. the unused z_fbdemo.c TransitionTile) would be rescaled
+// wrongly; such code must reference its vertices by raw pointer instead.
 F3DVtx* Interpreter::SegAddrVtx(uintptr_t w1) {
     if (w1 & 1) {
         uint32_t segNum = (uint32_t)(w1 >> 24);
