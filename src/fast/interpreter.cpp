@@ -16,6 +16,7 @@
 #include <list>
 #include <stack>
 #include "fast/resource/type/Light.h"
+#include "fast/resource/type/Vertex.h"
 
 #ifndef _LANGUAGE_C
 #define _LANGUAGE_C
@@ -3102,12 +3103,20 @@ bool gfx_vtx_hash_handler_custom(F3DGfx** cmd0) {
         gfx->GfxSpVertex(C0(12, 8), C0(1, 7) - C0(12, 8), (F3DVtx*)offset);
         (*cmd0)++;
     } else {
-        F3DVtx* vtx = (F3DVtx*)Ship::Context::GetInstance()->GetResourceManager()->GetResourceRawPointer(hash);
+        // The exported offset is a BYTE offset into the vertex resource. Its unit is that resource's own
+        // on-disk record size (16 for vanilla v0, 22 for the s32 v1 form) - never sizeof(F3DVtx), which is
+        // the padded runtime struct. Ask the resource rather than assuming.
+        auto resourceMgr = Ship::Context::GetInstance()->GetResourceManager();
+        auto res = resourceMgr->LoadResource(hash);
+        F3DVtx* vtx = (F3DVtx*)resourceMgr->GetResourceRawPointer(res);
 
         if (vtx != NULL) {
-            // The exported offset is a byte offset into the vertex resource, encoded when vertices were
-            // 16 bytes. Convert to an element index so it survives a change to sizeof(F3DVtx).
-            vtx += offset / OTR_EXPORTED_VTX_SIZE;
+            // dynamic_cast, not static: a hash that resolved to some other resource type would otherwise be
+            // undefined behaviour. Falls back to the vanilla record size, which is what this assumed before.
+            auto vertexRes = std::dynamic_pointer_cast<Fast::Vertex>(res);
+            const uint32_t recordSize =
+                (vertexRes != nullptr && vertexRes->RecordSize != 0) ? vertexRes->RecordSize : OTR_EXPORTED_VTX_SIZE;
+            vtx += offset / recordSize;
 
             (*cmd0)--;
             F3DGfx* cmd = *cmd0;

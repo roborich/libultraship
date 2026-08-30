@@ -17,12 +17,45 @@ ResourceFactoryBinaryVertexV0::ReadResource(std::shared_ptr<Ship::File> file,
 
     uint32_t count = reader->ReadUInt32();
     vertex->VertexList.reserve(count);
+    vertex->RecordSize = 16; // 3*s16 pos + u16 flag + 2*s16 tc + 4*u8 colour
 
     for (uint32_t i = 0; i < count; i++) {
         Vtx data;
         data.v.ob[0] = reader->ReadInt16();
         data.v.ob[1] = reader->ReadInt16();
         data.v.ob[2] = reader->ReadInt16();
+        data.v.flag = reader->ReadUInt16();
+        data.v.tc[0] = reader->ReadInt16();
+        data.v.tc[1] = reader->ReadInt16();
+        data.v.cn[0] = reader->ReadUByte();
+        data.v.cn[1] = reader->ReadUByte();
+        data.v.cn[2] = reader->ReadUByte();
+        data.v.cn[3] = reader->ReadUByte();
+        vertex->VertexList.push_back(data);
+    }
+
+    return vertex;
+}
+
+std::shared_ptr<Ship::IResource>
+ResourceFactoryBinaryVertexV1::ReadResource(std::shared_ptr<Ship::File> file,
+                                            std::shared_ptr<Ship::ResourceInitData> initData) {
+    if (!FileHasValidFormatAndReader(file, initData)) {
+        return nullptr;
+    }
+
+    auto vertex = std::make_shared<Vertex>(initData);
+    auto reader = std::get<std::shared_ptr<Ship::BinaryReader>>(file->Reader);
+
+    uint32_t count = reader->ReadUInt32();
+    vertex->VertexList.reserve(count);
+    vertex->RecordSize = 22; // 3*s32 pos + u16 flag + 2*s16 tc + 4*u8 colour
+
+    for (uint32_t i = 0; i < count; i++) {
+        Vtx data;
+        data.v.ob[0] = reader->ReadInt32();
+        data.v.ob[1] = reader->ReadInt32();
+        data.v.ob[2] = reader->ReadInt32();
         data.v.flag = reader->ReadUInt16();
         data.v.tc[0] = reader->ReadInt16();
         data.v.tc[1] = reader->ReadInt16();
