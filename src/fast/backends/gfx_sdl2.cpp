@@ -364,6 +364,20 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
 
 #ifdef __IOS__
     Uint32 flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN;
+#elif defined(__EMSCRIPTEN__)
+    // SOH [WASM] No SDL_WINDOW_ALLOW_HIGHDPI. With it, SDL sizes the canvas backing store
+    // by devicePixelRatio while ImGui keeps reporting CSS pixels, and the two spaces get
+    // mixed: GetDimensions below returns drawable pixels, but Gui.cpp derives
+    // mCurDimensions and mGameWindowViewport from ImGui's content region. At an internal
+    // resolution of 100% the two happen to agree and the game draws straight to the
+    // backbuffer, so nothing looks wrong; at any other value the offscreen path kicks in
+    // and the frame is presented scaled by the device pixel ratio -- on a 2x display the
+    // picture doubles and is cropped, whatever the slider is set to.
+    //
+    // Dropping the flag keeps one coordinate space. The cost is that the canvas renders at
+    // CSS resolution; the internal-resolution slider is the supported way to supersample,
+    // and it now behaves.
+    Uint32 flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
 #else
     Uint32 flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
 #endif
