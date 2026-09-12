@@ -403,7 +403,13 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
         mCtx = SDL_GL_CreateContext(mWnd);
 
         SDL_GL_MakeCurrent(mWnd, mCtx);
+#ifndef __EMSCRIPTEN__
+        // SOH [WASM] Skipped for the reason in SwapBuffersBegin: under Emscripten this
+        // retimes the main loop rather than setting a swap interval. At this point the
+        // loop does not exist yet, which is where the "Cannot set timing mode for main
+        // loop since a main loop does not exist" warning at startup came from.
         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
+#endif
 
         window_impl.Opengl = { mWnd, mCtx };
     } else {
@@ -701,8 +707,16 @@ void GfxWindowBackendSDL2::SwapBuffersBegin() {
 
     if (mVsyncEnabled != nextVsyncEnabled) {
         mVsyncEnabled = nextVsyncEnabled;
+#ifndef __EMSCRIPTEN__
         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
         SDL_RenderSetVSync(mRenderer, mVsyncEnabled ? 1 : 0);
+#endif
+        // SOH [WASM] Emscripten's SDL implements the swap interval by calling
+        // emscripten_set_main_loop_timing, so setting it to 0 does not merely stop waiting
+        // for a vblank -- it retimes the whole game loop to run as fast as the browser
+        // will allow, and the game fast-forwards. Pacing here belongs to
+        // emscripten_set_main_loop (see Graph_ThreadEntry); there is no vblank to wait for
+        // and nothing for this call to do that is not harmful.
     }
 
     SyncFramerateWithTime();
