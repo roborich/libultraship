@@ -107,6 +107,9 @@ if (USE_OPENGLES)
         target_link_libraries(libultraship PRIVATE GLESv3)
     elseif(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
         target_link_libraries(libultraship PRIVATE OpenGL::GLES2)
+    elseif(EMSCRIPTEN)
+        # SOH [WASM] Nothing to link: WebGL2 is provided by the runtime, and the GLES3
+        # entry points are resolved by -sMAX_WEBGL_VERSION=2 at link time.
     else()
         find_library(OPENGLES_LIBRARY GLESv2)
         target_link_libraries(libultraship PRIVATE GLESv2)
