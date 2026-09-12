@@ -642,6 +642,12 @@ static uint64_t qpc_to_100ns(uint64_t qpc) {
 }
 
 void GfxWindowBackendSDL2::SyncFramerateWithTime() const {
+#ifdef __EMSCRIPTEN__
+    // SOH [WASM] Frame pacing belongs to the browser here: the game loop is driven by
+    // emscripten_set_main_loop (see Graph_ThreadEntry). Sleeping to hit a deadline would
+    // block the tab's event loop instead of yielding to it.
+    return;
+#else
     uint64_t t = qpc_to_100ns(SDL_GetPerformanceCounter());
 
     const int64_t next = previous_time + 10 * FRAME_INTERVAL_US_NUMERATOR / FRAME_INTERVAL_US_DENOMINATOR;
@@ -681,6 +687,7 @@ void GfxWindowBackendSDL2::SyncFramerateWithTime() const {
         t = next;
     }
     previous_time = t;
+#endif // __EMSCRIPTEN__
 }
 
 void GfxWindowBackendSDL2::SwapBuffersBegin() {
