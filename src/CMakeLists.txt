@@ -64,7 +64,14 @@ if (GFX_DEBUG_DISASSEMBLER)
 endif()
 
 find_package(libzip REQUIRED)
-target_link_libraries(libultraship PRIVATE libzip::zip)
+# SOH [WASM] The public header O2rArchive.h includes <zip.h>, so consumers need libzip's
+# include path too. On desktop that is masked by libzip living in a system include dir;
+# with the source build used for wasm it is not, so propagate it there.
+if(EMSCRIPTEN)
+    target_link_libraries(libultraship PUBLIC libzip::zip)
+else()
+    target_link_libraries(libultraship PRIVATE libzip::zip)
+endif()
 
 find_package(nlohmann_json REQUIRED)
 target_link_libraries(libultraship PUBLIC nlohmann_json::nlohmann_json)
