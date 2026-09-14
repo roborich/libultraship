@@ -17,6 +17,17 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(FILTER Source_Files__Audio EXCLUDE REGEX "audio/CoreAudioAudioPlayer.*")
 endif()
 
+# SOH [WASM] The Web Audio player is browser-only; it is also guarded by __EMSCRIPTEN__. Its
+# JS half is an Emscripten JS library, linked into whatever executable links libultraship;
+# the LINK_DEPENDS makes an edit to it relink that executable.
+if (EMSCRIPTEN)
+    set(WEBAUDIO_JS_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/audio/WebAudioAudioPlayer.js")
+    target_link_options(libultraship PUBLIC "SHELL:--js-library ${WEBAUDIO_JS_LIBRARY}")
+    set_property(TARGET libultraship APPEND PROPERTY INTERFACE_LINK_DEPENDS "${WEBAUDIO_JS_LIBRARY}")
+else()
+    list(FILTER Source_Files__Audio EXCLUDE REGEX "audio/WebAudioAudioPlayer.*")
+endif()
+
 source_group("audio" FILES ${Source_Files__Audio})
 target_sources(libultraship PRIVATE ${Source_Files__Audio})
 
