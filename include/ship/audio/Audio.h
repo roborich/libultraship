@@ -6,6 +6,7 @@
 #include "ship/audio/AudioPlayer.h"
 
 namespace Ship {
+// SOH [WASM] WEBAUDIO is the browser build's AudioWorklet player.
 enum class AudioBackend { WASAPI, SDL, COREAUDIO, WEBAUDIO, NUL };
 
 class Audio {
@@ -27,6 +28,8 @@ class Audio {
 
   protected:
     void InitAudioPlayer();
+    // SOH [WASM] Switches to SDL without writing the choice to the config.
+    void FallBackToSdl(const char* why);
 
   private:
     std::shared_ptr<AudioPlayer> mAudioPlayer;

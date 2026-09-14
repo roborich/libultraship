@@ -13,7 +13,7 @@ namespace Ship {
 //
 // Single-threaded build, no SharedArrayBuffer: each update is copied out of the heap and
 // posted to the worklet as a transferred Int16Array; the worklet posts back how many frames
-// it has consumed, which is what Buffered() reports.
+// it has consumed, which is what Buffered() reports (see the JS file for how far that lags).
 class WebAudioAudioPlayer final : public AudioPlayer {
   public:
     WebAudioAudioPlayer(AudioSettings settings) : AudioPlayer(settings) {
@@ -21,6 +21,7 @@ class WebAudioAudioPlayer final : public AudioPlayer {
     ~WebAudioAudioPlayer();
 
     int32_t Buffered() override;
+    bool HasFailed() override;
 
   protected:
     bool DoInit() override;

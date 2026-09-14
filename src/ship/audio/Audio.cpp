@@ -44,8 +44,7 @@ void Audio::InitAudioPlayer() {
         // SOH [WASM] The Web Audio player needs AudioWorklet. A browser without it still has
         // SDL's ScriptProcessorNode path, which plays, if not as smoothly.
         if (GetCurrentAudioBackend() == AudioBackend::WEBAUDIO) {
-            SPDLOG_WARN("Web Audio player unavailable; falling back to SDL audio");
-            SetCurrentAudioBackend(AudioBackend::SDL);
+            FallBackToSdl("no AudioContext with AudioWorklet in this browser");
             return;
         }
 #endif
@@ -53,6 +52,15 @@ void Audio::InitAudioPlayer() {
         // Fallback to Null if the native system player does not work.
         SetCurrentAudioBackend(AudioBackend::NUL);
     }
+}
+
+// SOH [WASM] Unlike SetCurrentAudioBackend this does not save the choice: the failure may be
+// one session's (a page whose CSP blocks blob: scripts, a browser refusing one more
+// AudioContext), and a saved "sdl" would keep every later session on the main-thread player.
+void Audio::FallBackToSdl(const char* why) {
+    SPDLOG_WARN("Web Audio player unavailable ({}); falling back to SDL audio for this session", why);
+    mAudioBackend = AudioBackend::SDL;
+    InitAudioPlayer();
 }
 
 void Audio::Init() {
@@ -85,6 +93,14 @@ void Audio::Init() {
 }
 
 std::shared_ptr<AudioPlayer> Audio::GetAudioPlayer() {
+#ifdef __EMSCRIPTEN__
+    // SOH [WASM] The Web Audio player's worklet loads after Init returns; if that load failed
+    // the player is silent for good. Every audio call comes through here, so this is where a
+    // dead player gets replaced. The old one is released, which closes its context.
+    if (mAudioPlayer && mAudioPlayer->HasFailed()) {
+        FallBackToSdl("the AudioWorklet could not be loaded");
+    }
+#endif
     return mAudioPlayer;
 }
 

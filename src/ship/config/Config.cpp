@@ -270,6 +270,7 @@ AudioBackend Config::GetCurrentAudioBackend() {
 #endif
 
 #ifdef __EMSCRIPTEN__
+    // SOH [WASM] The AudioWorklet player; SDL's Emscripten player runs on the main thread.
     return AudioBackend::WEBAUDIO;
 #endif
 
