@@ -9,6 +9,7 @@ namespace Ship {
 class Config;
 
 /** @brief Identifies the audio backend implementation in use. */
+// SOH [WASM] WEBAUDIO is the browser build's AudioWorklet player.
 enum class AudioBackend { WASAPI, SDL, COREAUDIO, WEBAUDIO, NUL };
 
 /**
@@ -71,6 +72,8 @@ class Audio {
   protected:
     /** @brief (Re)initialises the AudioPlayer for the current backend and channel settings. */
     void InitAudioPlayer();
+    // SOH [WASM] Switches to SDL without writing the choice to the config.
+    void FallBackToSdl(const char* why);
 
     /**
      * @brief Reads and validates the audio backend from the persisted config.

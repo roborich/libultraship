@@ -54,6 +54,12 @@ class AudioPlayer {
      */
     virtual int32_t Buffered() = 0;
 
+    // SOH [WASM] True once a player that initialised successfully has since lost its device
+    // for good, so Audio can fall back to another. Only the Web Audio player can report this.
+    virtual bool HasFailed() {
+        return false;
+    }
+
     /**
      * @brief Submits a frame of PCM audio to the output device.
      *

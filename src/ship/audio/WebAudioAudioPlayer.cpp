@@ -7,6 +7,7 @@ extern "C" {
 int lus_webaudio_init(int sampleRate, int channels, int ringCapacityFrames);
 void lus_webaudio_close(void);
 int lus_webaudio_buffered(void);
+int lus_webaudio_failed(void);
 void lus_webaudio_play(const uint8_t* buf, size_t len, int maxQueuedFrames);
 }
 
@@ -43,6 +44,13 @@ void WebAudioAudioPlayer::DoClose() {
 
 int32_t WebAudioAudioPlayer::Buffered() {
     return lus_webaudio_buffered();
+}
+
+// The worklet loads asynchronously after DoInit has already returned true. If that load
+// fails there is no audio and never will be; Audio::GetAudioPlayer polls this and falls
+// back to SDL.
+bool WebAudioAudioPlayer::HasFailed() {
+    return lus_webaudio_failed() != 0;
 }
 
 void WebAudioAudioPlayer::DoPlay(const uint8_t* buf, size_t len) {
