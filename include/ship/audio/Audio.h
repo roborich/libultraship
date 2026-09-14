@@ -6,7 +6,7 @@
 #include "ship/audio/AudioPlayer.h"
 
 namespace Ship {
-enum class AudioBackend { WASAPI, SDL, COREAUDIO, NUL };
+enum class AudioBackend { WASAPI, SDL, COREAUDIO, WEBAUDIO, NUL };
 
 class Audio {
   public:

@@ -251,6 +251,10 @@ AudioBackend Config::GetCurrentAudioBackend() {
         return AudioBackend::SDL;
     }
 
+    if (backendName == "webaudio") {
+        return AudioBackend::WEBAUDIO;
+    }
+
     if (backendName == "null") {
         return AudioBackend::NUL;
     }
@@ -263,6 +267,10 @@ AudioBackend Config::GetCurrentAudioBackend() {
 
 #ifdef __APPLE__
     return AudioBackend::COREAUDIO;
+#endif
+
+#ifdef __EMSCRIPTEN__
+    return AudioBackend::WEBAUDIO;
 #endif
 
     return AudioBackend::SDL;
@@ -293,6 +301,9 @@ void Config::SetCurrentAudioBackend(AudioBackend backend) {
             break;
         case AudioBackend::SDL:
             SetString("Window.AudioBackend", "sdl");
+            break;
+        case AudioBackend::WEBAUDIO:
+            SetString("Window.AudioBackend", "webaudio");
             break;
         case AudioBackend::NUL:
             SetString("Window.AudioBackend", "null");

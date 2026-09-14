@@ -80,5 +80,9 @@ class AudioPlayer {
 #include "CoreAudioAudioPlayer.h"
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include "WebAudioAudioPlayer.h"
+#endif
+
 #include "SDLAudioPlayer.h"
 #include "NullAudioPlayer.h"

@@ -26,6 +26,11 @@ void Audio::InitAudioPlayer() {
             mAudioPlayer = std::make_shared<CoreAudioAudioPlayer>(this->mAudioSettings);
             break;
 #endif
+#ifdef __EMSCRIPTEN__
+        case AudioBackend::WEBAUDIO:
+            mAudioPlayer = std::make_shared<WebAudioAudioPlayer>(this->mAudioSettings);
+            break;
+#endif
         case AudioBackend::SDL:
             mAudioPlayer = std::make_shared<SDLAudioPlayer>(this->mAudioSettings);
             break;
@@ -35,6 +40,15 @@ void Audio::InitAudioPlayer() {
     }
 
     if (mAudioPlayer && !mAudioPlayer->Init()) {
+#ifdef __EMSCRIPTEN__
+        // SOH [WASM] The Web Audio player needs AudioWorklet. A browser without it still has
+        // SDL's ScriptProcessorNode path, which plays, if not as smoothly.
+        if (GetCurrentAudioBackend() == AudioBackend::WEBAUDIO) {
+            SPDLOG_WARN("Web Audio player unavailable; falling back to SDL audio");
+            SetCurrentAudioBackend(AudioBackend::SDL);
+            return;
+        }
+#endif
         // Failed to initialize system audio player.
         // Fallback to Null if the native system player does not work.
         SetCurrentAudioBackend(AudioBackend::NUL);
@@ -48,6 +62,11 @@ void Audio::Init() {
 #endif
 #ifdef __APPLE__
     mAvailableAudioBackends->push_back(AudioBackend::COREAUDIO);
+#endif
+#ifdef __EMSCRIPTEN__
+    // SOH [WASM] First, so it is the default: see WebAudioAudioPlayer.h for why SDL's
+    // main-thread audio glitches on every long frame.
+    mAvailableAudioBackends->push_back(AudioBackend::WEBAUDIO);
 #endif
     mAvailableAudioBackends->push_back(AudioBackend::SDL);
     mAvailableAudioBackends->push_back(AudioBackend::NUL);
