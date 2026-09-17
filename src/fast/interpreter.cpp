@@ -1631,8 +1631,15 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
             }
             tex_width[i] = line_size;
 
-            tex_width2[i] = (mRdp->texture_tile[tile].lrs - mRdp->texture_tile[tile].uls + 4) / 4;
-            tex_height2[i] = (mRdp->texture_tile[tile].lrt - mRdp->texture_tile[tile].ult + 4) / 4;
+            // The tile bounds are floats (an interpolated tile size carries a fractional origin), so lrs - uls can
+            // land a hair under the true extent and truncate to one texel narrow, which flips a clamped tile's
+            // clamp mode on those frames. The tolerance is far above the float error and far below the quarter-texel
+            // steps an integer tile size can produce, so every integer tile size truncates as before.
+            constexpr float kTileExtentTolerance = 1.0f / 64.0f;
+            tex_width2[i] = (uint32_t)((mRdp->texture_tile[tile].lrs - mRdp->texture_tile[tile].uls + 4) / 4 +
+                                       kTileExtentTolerance);
+            tex_height2[i] = (uint32_t)((mRdp->texture_tile[tile].lrt - mRdp->texture_tile[tile].ult + 4) / 4 +
+                                        kTileExtentTolerance);
 
             uint32_t tex_width1 = tex_width[i] << (cms & G_TX_MIRROR);
             uint32_t tex_height1 = tex_height[i] << (cmt & G_TX_MIRROR);
