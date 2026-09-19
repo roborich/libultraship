@@ -674,7 +674,9 @@ void GfxRenderingAPIOGL::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size
 }
 
 void GfxRenderingAPIOGL::Init() {
-#if !defined(__linux__) && !defined(__OpenBSD__)
+// SOH [WASM] Emscripten does not define __linux__, so it would otherwise land in the GLEW
+// branch. WebGL2 entry points come from the Emscripten GLES3 headers -- there is no GLEW.
+#if !defined(__linux__) && !defined(__OpenBSD__) && !defined(__EMSCRIPTEN__)
     glewInit();
 #endif
 

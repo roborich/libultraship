@@ -342,6 +342,12 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+#elif defined(__EMSCRIPTEN__)
+    // SOH [WASM] Ask for GLES 3.0, which is WebGL2. Without this Emscripten's SDL creates a
+    // WebGL1 context and the GLES3 path fails at runtime even though it linked.
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 #endif
 
 #ifdef _WIN32
@@ -358,6 +364,20 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
 
 #ifdef __IOS__
     Uint32 flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN;
+#elif defined(__EMSCRIPTEN__)
+    // SOH [WASM] No SDL_WINDOW_ALLOW_HIGHDPI. With it, SDL sizes the canvas backing store
+    // by devicePixelRatio while ImGui keeps reporting CSS pixels, and the two spaces get
+    // mixed: GetDimensions below returns drawable pixels, but Gui.cpp derives
+    // mCurDimensions and mGameWindowViewport from ImGui's content region. At an internal
+    // resolution of 100% the two happen to agree and the game draws straight to the
+    // backbuffer, so nothing looks wrong; at any other value the offscreen path kicks in
+    // and the frame is presented scaled by the device pixel ratio -- on a 2x display the
+    // picture doubles and is cropped, whatever the slider is set to.
+    //
+    // Dropping the flag keeps one coordinate space. The cost is that the canvas renders at
+    // CSS resolution; the internal-resolution slider is the supported way to supersample,
+    // and it now behaves.
+    Uint32 flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
 #else
     Uint32 flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
 #endif
@@ -397,7 +417,13 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
         mCtx = SDL_GL_CreateContext(mWnd);
 
         SDL_GL_MakeCurrent(mWnd, mCtx);
+#ifndef __EMSCRIPTEN__
+        // SOH [WASM] Skipped for the reason in SwapBuffersBegin: under Emscripten this
+        // retimes the main loop rather than setting a swap interval. At this point the
+        // loop does not exist yet, which is where the "Cannot set timing mode for main
+        // loop since a main loop does not exist" warning at startup came from.
         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
+#endif
 
         window_impl.Opengl = { mWnd, mCtx };
     } else {
@@ -642,6 +668,12 @@ static uint64_t qpc_to_100ns(uint64_t qpc) {
 }
 
 void GfxWindowBackendSDL2::SyncFramerateWithTime() const {
+#ifdef __EMSCRIPTEN__
+    // SOH [WASM] Frame pacing belongs to the browser here: the game loop is driven by
+    // emscripten_set_main_loop (see Graph_ThreadEntry). Sleeping to hit a deadline would
+    // block the tab's event loop instead of yielding to it.
+    return;
+#else
     uint64_t t = qpc_to_100ns(SDL_GetPerformanceCounter());
 
     const int64_t next = previous_time + 10 * FRAME_INTERVAL_US_NUMERATOR / FRAME_INTERVAL_US_DENOMINATOR;
@@ -681,6 +713,7 @@ void GfxWindowBackendSDL2::SyncFramerateWithTime() const {
         t = next;
     }
     previous_time = t;
+#endif // __EMSCRIPTEN__
 }
 
 void GfxWindowBackendSDL2::SwapBuffersBegin() {
@@ -688,8 +721,16 @@ void GfxWindowBackendSDL2::SwapBuffersBegin() {
 
     if (mVsyncEnabled != nextVsyncEnabled) {
         mVsyncEnabled = nextVsyncEnabled;
+#ifndef __EMSCRIPTEN__
         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
         SDL_RenderSetVSync(mRenderer, mVsyncEnabled ? 1 : 0);
+#endif
+        // SOH [WASM] Emscripten's SDL implements the swap interval by calling
+        // emscripten_set_main_loop_timing, so setting it to 0 does not merely stop waiting
+        // for a vblank -- it retimes the whole game loop to run as fast as the browser
+        // will allow, and the game fast-forwards. Pacing here belongs to
+        // emscripten_set_main_loop (see Graph_ThreadEntry); there is no vblank to wait for
+        // and nothing for this call to do that is not harmful.
     }
 
     SyncFramerateWithTime();

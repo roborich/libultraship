@@ -25,6 +25,12 @@ class AudioPlayer {
     bool Init();
     virtual int32_t Buffered() = 0;
 
+    // SOH [WASM] True once a player that initialised successfully has since lost its device
+    // for good, so Audio can fall back to another. Only the Web Audio player can report this.
+    virtual bool HasFailed() {
+        return false;
+    }
+
     // Play audio
     // buf: interleaved samples in either stereo: (L, R, L, R, ...), or surround: (FL, FR, C, LFE, SL, SR, ...)
     // len: length in bytes
@@ -78,6 +84,10 @@ class AudioPlayer {
 
 #ifdef __APPLE__
 #include "CoreAudioAudioPlayer.h"
+#endif
+
+#ifdef __EMSCRIPTEN__
+#include "WebAudioAudioPlayer.h"
 #endif
 
 #include "SDLAudioPlayer.h"

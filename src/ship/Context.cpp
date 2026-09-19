@@ -102,7 +102,11 @@ bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
 
     try {
         // Setup Logging
+#ifndef __EMSCRIPTEN__
+        // SOH [WASM] This pool backs the async logger below, and spawning its thread would
+        // abort in a build without pthreads. The wasm build logs synchronously.
         spdlog::init_thread_pool(8192, 1);
+#endif
         std::vector<spdlog::sink_ptr> sinks;
 
 #if (!defined(_WIN32)) || defined(_DEBUG)
@@ -149,6 +153,13 @@ bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
         mLogger = std::make_shared<spdlog::logger>("multi_sink", sinks.begin(), sinks.end());
         GetLogger()->set_level(debugBuildLogLevel);
         GetLogger()->flush_on(spdlog::level::trace);
+#elif defined(__EMSCRIPTEN__)
+        // SOH [WASM] Synchronous, for the reason above. Note the async logger's overflow
+        // policy is `block`, which on a single thread would be a deadlock rather than a
+        // slowdown.
+        mLogger = std::make_shared<spdlog::logger>(GetName(), sinks.begin(), sinks.end());
+        GetLogger()->set_level(releaseBuildLogLevel);
+        GetLogger()->flush_on(spdlog::level::info);
 #else
         mLogger = std::make_shared<spdlog::async_logger>(GetName(), sinks.begin(), sinks.end(), spdlog::thread_pool(),
                                                          spdlog::async_overflow_policy::block);

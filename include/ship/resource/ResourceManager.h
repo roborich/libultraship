@@ -8,6 +8,8 @@
 #include <mutex>
 #include <queue>
 #include <variant>
+#include <future>
+#include <type_traits>
 #include "ship/resource/Resource.h"
 #include "ship/resource/ResourceLoader.h"
 #include "ship/resource/archive/Archive.h"
@@ -137,6 +139,27 @@ class ResourceManager {
     std::shared_ptr<ResourceLoader> mResourceLoader;
     std::shared_ptr<ArchiveManager> mArchiveManager;
     std::shared_ptr<BS::thread_pool> mThreadPool;
+
+    // SOH [WASM] Every resource load goes through here. Emscripten builds are
+    // single-threaded -- there is no pool to submit to -- so the task runs inline and is
+    // handed back as an already-satisfied future, which is what the async call sites
+    // expect. Loads become synchronous rather than unsupported.
+    template <typename F> auto SubmitTask(F&& func, BS::priority_t priority = BS::pr::normal) {
+#ifdef __EMSCRIPTEN__
+        (void)priority;
+        using Result = std::invoke_result_t<F>;
+        std::promise<Result> promise;
+        if constexpr (std::is_void_v<Result>) {
+            func();
+            promise.set_value();
+        } else {
+            promise.set_value(func());
+        }
+        return promise.get_future();
+#else
+        return mThreadPool->submit_task(std::forward<F>(func), priority);
+#endif
+    }
     std::mutex mMutex;
     bool mAltAssetsEnabled = false;
     // Private information for which owner and archive are default.
