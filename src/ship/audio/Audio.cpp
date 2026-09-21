@@ -1,5 +1,7 @@
 #include "ship/audio/Audio.h"
 
+#include <algorithm>
+
 #ifdef __APPLE__
 #include "ship/audio/CoreAudioAudioPlayer.h"
 #endif
@@ -54,7 +56,21 @@ void Audio::Init() {
     mAvailableAudioBackends->push_back(AudioBackend::SDL);
     mAvailableAudioBackends->push_back(AudioBackend::NUL);
 
-    SetCurrentAudioBackend(GetSavedAudioBackend());
+    // A config written on another platform can name a backend this build does not have:
+    // "coreaudio" from a Mac install, opened on Windows or in a browser. InitAudioPlayer only
+    // compiles its own platform's players, so it would fall through to the null player and the
+    // game would run silent without a word. Use this platform's preferred backend instead --
+    // mAvailableAudioBackends->front() by construction -- and let SetCurrentAudioBackend write
+    // the correction back, so the stale config becomes one this build can play.
+    AudioBackend backend = GetSavedAudioBackend();
+    if (std::find(mAvailableAudioBackends->begin(), mAvailableAudioBackends->end(), backend) ==
+        mAvailableAudioBackends->end()) {
+        SPDLOG_WARN("The configured audio backend ({}) is not available in this build; using the default",
+                    mConfig->GetString("Window.AudioBackend"));
+        backend = mAvailableAudioBackends->front();
+    }
+
+    SetCurrentAudioBackend(backend);
     SetAudioChannels(GetSavedAudioChannelsSetting());
 }
 
