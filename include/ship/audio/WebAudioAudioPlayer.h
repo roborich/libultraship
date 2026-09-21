@@ -1,0 +1,43 @@
+#pragma once
+#include "AudioPlayer.h"
+
+namespace Ship {
+// 2S2H [WASM] Plays through a Web Audio AudioWorklet, so the callback that feeds the speaker
+// runs on the browser's audio rendering thread rather than the page's main thread.
+//
+// SDL's Emscripten backend uses a ScriptProcessorNode, whose callback is a main-thread event:
+// any frame longer than a callback interval or two (about 20-40 ms at 1024 frames) starves it
+// and the output glitches, however much audio SDL has queued, because the code that moves
+// samples from that queue to the device is the thing being starved. With the worklet the
+// queue depth is real headroom: a long frame is covered by whatever is already queued.
+//
+// Single-threaded build, no SharedArrayBuffer: each update is copied out of the heap and
+// posted to the worklet as a transferred Int16Array; the worklet posts back how many frames
+// it has consumed, which is what Buffered() reports (see the JS file for how far that lags).
+class WebAudioAudioPlayer final : public AudioPlayer {
+  public:
+    WebAudioAudioPlayer(AudioSettings settings) : AudioPlayer(settings) {
+    }
+    ~WebAudioAudioPlayer();
+
+    int32_t Buffered() override;
+    bool HasFailed() override;
+
+  protected:
+    bool DoInit() override;
+    void DoClose() override;
+    void DoPlay(const uint8_t* buf, size_t len) override;
+
+  private:
+    int32_t mNumChannels = 2;
+    // 2S2H [WASM] Sticky, because a failed *re-init* cannot be seen on the JS side. DoClose
+    // clears Module.LUSWebAudio, so if the DoInit that follows fails there is no state object
+    // left for lus_webaudio_failed() to report through -- it answers 0, HasFailed() says
+    // healthy, and the player stays silent for good. SetAudioChannels does exactly that
+    // close-then-init pair, and the game drives it: Audio_SetFileSelectSettings switches to
+    // surround whenever the save's Sound option says so. Browsers cap concurrent
+    // AudioContexts (Chrome at 6) and close() is asynchronous, so the re-init is the one most
+    // likely to fail.
+    bool mFailed = false;
+};
+} // namespace Ship

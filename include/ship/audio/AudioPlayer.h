@@ -55,6 +55,18 @@ class AudioPlayer {
     virtual int32_t Buffered() = 0;
 
     /**
+     * @brief Returns true once a player that initialised successfully has since lost its
+     *        device for good, so Audio can fall back to another backend.
+     *
+     * Only the browser's Web Audio player can report this: its AudioWorklet loads
+     * asynchronously, after DoInit() has already returned true.
+     */
+    // 2S2H [WASM]
+    virtual bool HasFailed() {
+        return false;
+    }
+
+    /**
      * @brief Submits a frame of PCM audio to the output device.
      *
      * If 5.1 surround output is configured and the channel setting requires matrix
@@ -160,6 +172,11 @@ class AudioPlayer {
 
 #ifdef __APPLE__
 #include "CoreAudioAudioPlayer.h"
+#endif
+
+// 2S2H [WASM]
+#ifdef __EMSCRIPTEN__
+#include "WebAudioAudioPlayer.h"
 #endif
 
 #include "SDLAudioPlayer.h"

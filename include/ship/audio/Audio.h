@@ -9,7 +9,8 @@ namespace Ship {
 class Config;
 
 /** @brief Identifies the audio backend implementation in use. */
-enum class AudioBackend { WASAPI, SDL, COREAUDIO, NUL };
+// 2S2H [WASM] WEBAUDIO is the browser build's AudioWorklet player.
+enum class AudioBackend { WASAPI, SDL, COREAUDIO, WEBAUDIO, NUL };
 
 /**
  * @brief Manages audio playback through a platform-specific AudioPlayer.
@@ -71,6 +72,29 @@ class Audio {
   protected:
     /** @brief (Re)initialises the AudioPlayer for the current backend and channel settings. */
     void InitAudioPlayer();
+
+    /**
+     * @brief Switches backend for this session without writing the choice to the config.
+     *
+     * Used when a player cannot be brought up: a device that will not open, or a browser
+     * without AudioWorklet. The failure may be this session's alone, so the saved backend is
+     * left as it was and the next launch retries it.
+     *
+     * @param backend The backend to fall back to.
+     * @param why Short reason, logged.
+     */
+    void FallBackTo(AudioBackend backend, const char* why);
+
+#ifdef __EMSCRIPTEN__
+    /**
+     * @brief Replaces the active player if it has since reported itself dead.
+     *
+     * The Web Audio player's worklet loads asynchronously, after DoInit has returned true,
+     * so a player that reported success can still turn out to be permanently silent.
+     */
+    // 2S2H [WASM]
+    void ReplaceFailedPlayer();
+#endif
 
     /**
      * @brief Reads and validates the audio backend from the persisted config.
