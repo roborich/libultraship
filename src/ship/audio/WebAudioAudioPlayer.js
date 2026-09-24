@@ -11,8 +11,8 @@
 // The game then synthesises its smaller update size for those ticks and catches up. What keeps
 // a stale reading from costing audio is the game-side arithmetic, not this file: it tops up
 // only while below its 4320 target and queues at most three 560-frame updates, so the true
-// depth stays under the 6000 at which lus_webaudio_play refuses one. An inflated reading that
-// did cross 6000 would discard a whole update -- but never silently, because the drop check
+// depth stays under the maxQueuedFrames (the game's 6000) at which lus_webaudio_play refuses
+// one. An inflated reading that did cross it would discard a whole update -- but never silently, because the drop check
 // here and the game's drop counter read the same value inside one wasm frame, so they always
 // agree.
 

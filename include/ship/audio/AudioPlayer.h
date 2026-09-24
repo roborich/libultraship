@@ -15,6 +15,7 @@ struct AudioSettings {
     int32_t SampleRate = 44100;     ///< Output sample rate in Hz.
     int32_t SampleLength = 1024;    ///< Number of samples per audio frame.
     int32_t DesiredBuffered = 2480; ///< Target number of frames to keep buffered.
+    int32_t MaxQueuedFrames = 6000; ///< Frames queued beyond which DoPlay discards an update.
     AudioChannelsSetting ChannelSetting =
         AudioChannelsSetting::audioStereo; ///< Channel mode (stereo / 5.1 matrix / 5.1 raw).
 };
@@ -91,6 +92,9 @@ class AudioPlayer {
 
     /** @brief Returns the target number of frames to keep buffered. */
     int32_t GetDesiredBuffered() const;
+
+    /** @brief Returns the number of queued frames beyond which DoPlay discards an update. */
+    int32_t GetMaxQueuedFrames() const;
 
     /** @brief Returns the current channel-output mode. */
     AudioChannelsSetting GetAudioChannels() const;

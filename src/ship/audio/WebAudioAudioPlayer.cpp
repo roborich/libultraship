@@ -18,12 +18,6 @@ namespace Ship {
 // which DoPlay stops accepting updates.
 static const int32_t kRingCapacityFrames = 16384;
 
-// Frames queued but not yet consumed beyond which an update is discarded rather than queued.
-// The game only tops the queue up while it is below its target, so this is only reached when
-// nothing is consuming: an AudioContext still suspended for want of a user gesture, or a
-// hidden tab. Matches SDLAudioPlayer::DoPlay, so the game's tuning applies to both players.
-static const int32_t kMaxQueuedFrames = 6000;
-
 WebAudioAudioPlayer::~WebAudioAudioPlayer() {
     SPDLOG_TRACE("destruct Web Audio player");
     DoClose();
@@ -61,7 +55,10 @@ bool WebAudioAudioPlayer::HasFailed() {
 }
 
 void WebAudioAudioPlayer::DoPlay(const uint8_t* buf, size_t len) {
-    lus_webaudio_play(buf, len, kMaxQueuedFrames);
+    // Beyond GetMaxQueuedFrames() the update is discarded rather than queued. The game only
+    // tops the queue up while it is below its target, so this is only reached when nothing is
+    // consuming: an AudioContext still suspended for want of a user gesture, or a hidden tab.
+    lus_webaudio_play(buf, len, GetMaxQueuedFrames());
 }
 
 } // namespace Ship

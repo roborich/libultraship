@@ -37,7 +37,7 @@ bool CoreAudioAudioPlayer::DoInit() {
     const size_t bytesPerSample = sizeof(int16_t);
     const size_t bytesPerFrame = bytesPerSample * mNumChannels;
 
-    mRingBufferSize = 6000 * bytesPerFrame;
+    mRingBufferSize = GetMaxQueuedFrames() * bytesPerFrame;
     mRingBuffer = new uint8_t[mRingBufferSize];
     mRingBufferReadPos = 0;
     mRingBufferWritePos = 0;
@@ -134,7 +134,7 @@ void CoreAudioAudioPlayer::DoPlay(const uint8_t* buf, size_t len) {
     pthread_mutex_lock(&mMutex);
 
     const size_t bytesPerFrame = sizeof(int16_t) * mNumChannels;
-    const size_t maxBuffered = 6000 * bytesPerFrame;
+    const size_t maxBuffered = GetMaxQueuedFrames() * bytesPerFrame;
 
     size_t available;
     if (mRingBufferWritePos >= mRingBufferReadPos) {

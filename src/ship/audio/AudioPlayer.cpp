@@ -33,6 +33,10 @@ int32_t AudioPlayer::GetDesiredBuffered() const {
     return mAudioSettings.DesiredBuffered;
 }
 
+int32_t AudioPlayer::GetMaxQueuedFrames() const {
+    return mAudioSettings.MaxQueuedFrames;
+}
+
 AudioChannelsSetting AudioPlayer::GetAudioChannels() const {
     return mAudioSettings.ChannelSetting;
 }
