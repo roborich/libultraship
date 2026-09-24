@@ -431,16 +431,24 @@ class ResourceManager {
     // single-threaded -- there is no pool to submit to -- so the task runs inline and is
     // handed back as an already-satisfied future, which is what the async call sites
     // expect. Loads become synchronous rather than unsupported.
+    //
+    // A throw is stored in the future, as the pool does, rather than escaping from here:
+    // DirtyResources and UnloadResourcesAsync never call .get(), so on desktop their
+    // exceptions are discarded with the future, and inline they would otherwise stop the frame.
     template <typename F> auto SubmitTask(F&& func, BS::priority_t priority = BS::pr::normal) {
 #ifdef __EMSCRIPTEN__
         (void)priority;
         using Result = std::invoke_result_t<F>;
         std::promise<Result> promise;
-        if constexpr (std::is_void_v<Result>) {
-            func();
-            promise.set_value();
-        } else {
-            promise.set_value(func());
+        try {
+            if constexpr (std::is_void_v<Result>) {
+                func();
+                promise.set_value();
+            } else {
+                promise.set_value(func());
+            }
+        } catch (...) {
+            promise.set_exception(std::current_exception());
         }
         return promise.get_future();
 #else
