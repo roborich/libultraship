@@ -20,6 +20,7 @@
 
 #include "fast/resource/type/Texture.h"
 #include "ship/resource/Resource.h"
+#include "libultraship/bridge/gfxbridge.h"
 
 // TODO figure out why changing these to 640x480 makes the game only render in a quarter of the window
 #define SCREEN_WIDTH 320
@@ -572,5 +573,3 @@ const char* GfxGetOpcodeName(int8_t opcode);
 
 extern "C" void gfx_texture_cache_clear();
 extern "C" void gfx_shader_cache_clear();
-extern "C" int gfx_create_framebuffer(uint32_t width, uint32_t height, uint32_t native_width, uint32_t native_height,
-                                      uint8_t resize, bool forceFixedAspect = false);
