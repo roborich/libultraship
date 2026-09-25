@@ -2105,7 +2105,9 @@ void Interpreter::GfxDpLoadBlock(uint8_t tile, uint32_t uls, uint32_t ult, uint3
     SUPPORT_CHECK(ult == 0);
 
     // The lrs field rather seems to be number of pixels to load
-    uint32_t word_size_shift = 0;
+    // Signed: 4b loads use -1 (half a byte per texel). As uint32_t it became 0xFFFFFFFF, so `> 0` was true and the
+    // size came out as (lrs + 1) << 0xFFFFFFFF, i.e. 0 bytes, giving a zero-height texture.
+    int32_t word_size_shift = 0;
     switch (mRdp->texture_to_load.siz) {
         case G_IM_SIZ_4b:
             word_size_shift = -1;
