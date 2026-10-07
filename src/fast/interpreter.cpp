@@ -10,6 +10,9 @@
 #ifndef _WIN32
 #include <dlfcn.h>
 #endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten/heap.h>
+#endif
 
 #include <any>
 #include <map>
@@ -3969,7 +3972,12 @@ static bool IsValidResolvedAddress(uintptr_t addr) {
     }
 
     // Still in the N64 segmented range, but might be a false positive (a real low pointer).
-#ifdef _WIN32
+#if defined(__EMSCRIPTEN__)
+    // SOH [WASM] Every pointer is an offset into linear memory, so the game's static data and
+    // the bottom of the heap all sit in this range, and dladdr knows no module to place them
+    // in. Anything inside linear memory is readable; only an address past its end would trap.
+    return addr != 0 && addr < emscripten_get_heap_size();
+#elif defined(_WIN32)
     // For Windows, check whether the address belongs to a dll.
     HMODULE module = nullptr;
     return GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
