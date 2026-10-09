@@ -352,7 +352,7 @@ std::shared_ptr<ResourceInitData> ResourceLoader::ReadResourceInitDataJson(const
 
     std::string schema = FindJsonSchema({ fileToLoad });
     if (schema.empty()) {
-        auto archives = Context::GetInstance()->GetResourceManager()->GetArchiveManager();
+        auto archives = Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
         schema = FindJsonSchema(archives->LoadFileFromAllLayers(filePath));
     }
     if (schema.empty()) {
