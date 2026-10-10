@@ -1887,7 +1887,12 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
     bool use_prim_depth = (mRdp->other_mode_l & G_ZS_PRIM) != 0;
 
     if (texture_edge) {
-        if (use_alpha) {
+        // With ALPHA_CVG_SEL and no FORCE_BL the blender's alpha is coverage and the RDP only blends
+        // partly covered edge pixels, so a (CLR_MEM, 1MA) blender is still an alpha-tested surface. The Missing
+        // Link uses such a mode (0xC8103078) for its foliage, gates and trims; blending it drew a halo of whatever
+        // was behind at draw time around every edge.
+        bool cvgAlphaOnly = (mRdp->other_mode_l & (ALPHA_CVG_SEL | FORCE_BL)) == ALPHA_CVG_SEL;
+        if (use_alpha && !cvgAlphaOnly) {
             alpha_threshold = true;
             texture_edge = false;
         }
